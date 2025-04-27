@@ -44,6 +44,9 @@ export default function AboutPage() {
                 Jack Booth is a cyber security specialist with expertise in architecting technical solutions. He has a wealth of experience in digital start-ups, including FinTech, crowd source cyber security, educational gaming, and animation. Jack brings intellectual curiosity, practical solutions, and an uncanny ability to articulate complicated technical concepts accessibly. Having crewed at Gray's Inn in his days in audio-visual services, he understands the challenges of pupillage advocacy exercises and the pupillage application process.
               </p>
             </div>
+            <div className="w-full md:w-48 shrink-0">
+              <img src="/jack-profile.jpg" alt="Jack Booth" className="w-full rounded-lg shadow-lg"/>
+            </div>
           </div>
         </div>
       </div>
