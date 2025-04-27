@@ -111,10 +111,19 @@ export default function LandingPage() {
           </section>
         </main>
 
-        <footer className="text-center text-gray-500 mt-20">
-          <p>© {new Date().getFullYear()} Advocatr. All rights reserved.</p>
+        <footer className=" text-center grid h=56 grid-cols-3 content-start gap-4 text-gray-500">
+          <div>
+            <p>© {new Date().getFullYear()} Advocatr. All rights reserved.</p>
+          </div>
+          <div>
+            <p><a href="/feedback">Feedback</a></p>
+          </div>
+          <div>
+            <p><a href="/privacy-policy">Privacy Policy</a></p>
+          </div>
+         
         </footer>
       </div>
-    </div>
+      </div>
   );
 }
