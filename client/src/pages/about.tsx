@@ -28,7 +28,7 @@ export default function AboutPage() {
             </div>
           </div>
           <p className="text-lg mb-4 text-justify">
-            Saara Idelbi is ranked by the Legal 500 as a 'Leading Junior' barrister in multiple areas. She is in chambers at 5 Essex and is a member of Gray's Inn, where she is also an advocacy trainer. She has built a reputation for navigating complex legal challenges with precision and clarity. Saara co-authored the
+            Saara Idelbi is ranked by the Legal 500 as a 'Leading Junior' barrister in multiple areas. She is a tenant at 5 Essex Chambers and is a member of Gray's Inn, where she is also an advocacy trainer. She has built a reputation for navigating complex legal challenges with precision and clarity. Saara co-authored the
             <a href="https://www.lawbriefpublishing.com/product/damagesinhumanrightsclaims/"> Practical Guide to Non-Pecuniary Damages in Human Rights Act claims</a>. Her advocacy has been described as carefully considered and effective, charming and tenacious, and killer. All of which reflects that advocacy is and must be adaptable, something she is keen for you to practise on Advocatr.
           </p>
           <p className="text-lg mb-4 text-justify">
