@@ -11,37 +11,37 @@ export default function AdvocacyResourcesPage() {
             <p className="text-lg mb-4">
           
 
-            Bar Council: https://www.barcouncil.org.uk/becoming-a-barrister.html
-            <br></br>  
-            Bar Standards Board: https://www.barstandardsboard.org.uk/training-qualification/becoming-a-barrister.html
+            <a href="https://www.barcouncil.org.uk/becoming-a-barrister.html">Bar Council</a>
             <br></br>
-            Gray’s Inn: https://www.graysinn.org.uk/education/
+            <a href="https://www.barstandardsboard.org.uk/training-qualification/becoming-a-barrister.html">Bar Standards Board</a>
             <br></br>
-            Inner Temple: https://www.innertemple.org.uk/becoming-a-barrister/
+             <a href="https://www.graysinn.org.uk/education/">Gray’s Inn</a>
             <br></br>
-            Lincoln’s Inn:https://www.lincolnsinn.org.uk/becoming-barrister/
+             <a href="https://www.innertemple.org.uk/becoming-a-barrister/">Inner Temple</a>
             <br></br>
-            Middle Temple: https://www.middletemple.org.uk/
+              <a href="https://www.lincolnsinn.org.uk/becoming-barrister/">Lincoln’s Inn</a> 
+            <br></br>
+            <a href="https://www.middletemple.org.uk/">Middle Temple</a> 
             </p>
 
             <h3 className="text-2xl font-bold mb-6"> Books</h3>
               <p className="text-lg mb-4">
 
-            Iain Morley QC (now KC), The Devil’s Advocate (3rd Edition, 2015) https://amzn.eu/d/7YAN4hP
+            Iain Morley QC (now KC), <a href="https://amzn.eu/d/7YAN4hP">The Devil’s Advocate (3rd Edition, 2015)</a> 
             <br></br>
-            Philip Meyer, Storytelling for Lawyers (2014) https://amzn.eu/d/87Yw2XL
+            Philip Meyer,<a href="https://amzn.eu/d/87Yw2XL"> Storytelling for Lawyers (2014)</a>
             <br></br>
-            Justice Antonin Scalia and Bryan A. Garner, Making your Case: The Art of Persuading Judges (2009) https://amzn.eu/d/by2HQUb
+            Justice Antonin Scalia and Bryan A. Garner, <a href="https://amzn.eu/d/by2HQUb">Making your Case: The Art of Persuading Judges (2009)</a>
             <br></br>               
-            Georgina Wolfe, The Path to Pupillage: A Guide for the Aspiring Barrister (2013) https://amzn.eu/d/exWjZE8
+            Georgina Wolfe, <a href="https://amzn.eu/d/exWjZE8">The Path to Pupillage: A Guide for the Aspiring Barrister (2013)</a>
             <br></br>
-            Tomas McCabe, Get Pupillage (2nd Edition, 2024) https://amzn.eu/d/jhRq1iF
+            Tomas McCabe,  <a href="https://amzn.eu/d/jhRq1iF">Get Pupillage (2nd Edition, 2024)</a>
               </p>
             <h3 className="text-2xl font-bold mb-6"> Podcasts</h3>
               <p className="text-lg mb-4">
             Georgina Wolfe and Beatrice Collier, The Pupillage Podcast on <a href="https://open.spotify.com/show/3zwLF5UkU0HfhxV82GlIyz">Spotify</a> and <a href="https://podcasts.apple.com/gb/podcast/the-pupillage-podcast/id1448140217">Apple</a> 
             <br></br>
-            Bibi Badejo, The Advocacy Podcast https://www.theadvocacypodcast.com/episodes/
+            Bibi Badejo,  <a href="https://www.theadvocacypodcast.com/episodes/">The Advocacy Podcast</a>
               </p>
         </div>
       </div>

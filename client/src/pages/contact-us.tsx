@@ -56,7 +56,7 @@ export default function ContactUsPage() {
         <h1 className="text-4xl font-bold mb-6">Contact Us</h1>
         <div className="prose max-w-none mb-8">
           <p className="text-lg">
-            Get in touch with the Advocatr team for support or inquiries.
+            Get in touch with the Advocatr team for support or enquiries.
           </p>
         </div>
 
