@@ -44,7 +44,7 @@ export default function LandingPage() {
         <main>
           <section className="text-center mb-20">
             <h1 className="text-5xl font-bold mb-6">
-              Master Advocacy Skills with Expert Guidance
+              Master Advocacy Skills <br></br>with Expert Guidance
             </h1>
             <p className="text-xl text-gray-600 max-w-3xl mx-auto mb-8">
               Advocatr provides structured exercises and feedback to help you
@@ -74,27 +74,29 @@ export default function LandingPage() {
 
             <Card>
               <CardContent className="pt-6">
-                <Users className="h-10 w-10 mb-4 text-primary" />
-                <h2 className="text-xl font-bold mb-2">Expert Demos</h2>
+                <Award className="h-10 w-10 mb-4 text-primary" />
+                <h2 className="text-xl font-bold mb-2">
+                  Professional Feedback
+                </h2>
                 <p className="text-gray-600">
-                  Watch demonstrations from experienced advocates to understand
-                  best practices.
+                  Receive feedback about your submissions to improve your
+                  skills.
                 </p>
               </CardContent>
             </Card>
 
             <Card>
               <CardContent className="pt-6">
-                <Award className="h-10 w-10 mb-4 text-primary" />
-                <h2 className="text-xl font-bold mb-2">
-                  Professional Feedback
-                </h2>
+                <Users className="h-10 w-10 mb-4 text-primary" />
+                <h2 className="text-xl font-bold mb-2">Progress Tracking</h2>
                 <p className="text-gray-600">
-                  Receive detailed feedback on your submissions to improve your
-                  skills.
+                  Track your progress through the advocacy exercises.
                 </p>
               </CardContent>
             </Card>
+
+            
+
           </section>
 
           <section className="text-center mb-16">
