@@ -27,6 +27,7 @@ export const exercises = pgTable("exercises", {
   professionalAnswerUrl: text("professional_answer_url").notNull(),
   pdfUrl: text("pdf_url"),
   order: integer("order").notNull(),
+  switchTimes: text("switch_times").notNull().default('[]'), // JSON array of numbers representing seconds
 });
 
 export const videoSwitchPoints = pgTable("video_switch_points", {
