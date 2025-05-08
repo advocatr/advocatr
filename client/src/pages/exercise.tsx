@@ -158,38 +158,16 @@ export default function Exercise() {
 
           <div>
             <h2 className="text-xl font-semibold mb-4">Your Submission</h2>
-            {progress?.videoUrl ? (
-              <VideoPlayer url={progress.videoUrl} />
-            ) : (
-              <div className="bg-white p-8 rounded-lg border-2 border-dashed border-gray-300 text-center">
-                {mutation.isPending ? (
-                  <div className="space-y-4">
-                    <Progress value={uploadProgress} className="w-full" />
-                    <p className="text-sm text-gray-600">Uploading video... {uploadProgress}%</p>
-                  </div>
-                ) : (
-                  <>
-                    <input
-                      type="file"
-                      accept="video/*"
-                      className="hidden"
-                      id="video-upload"
-                      onChange={handleUpload}
-                      disabled={mutation.isPending}
-                    />
-                    <label
-                      htmlFor="video-upload"
-                      className="cursor-pointer block"
-                    >
-                      <Upload className="mx-auto h-12 w-12 text-gray-400" />
-                      <p className="mt-2 text-sm text-gray-600">
-                        Click to upload your video
-                      </p>
-                    </label>
-                  </>
-                )}
-              </div>
-            )}
+            <VideoPlayer 
+              url={progress?.videoUrl} 
+              isRecordingEnabled={!progress?.videoUrl}
+              onRecordingComplete={(blob) => {
+                const file = new File([blob], 'recording.webm', { type: 'video/webm' });
+                const formData = new FormData();
+                formData.append('video', file);
+                mutation.mutate(formData);
+              }}
+            />
           </div>
         </div>
 
