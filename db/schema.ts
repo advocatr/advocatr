@@ -29,6 +29,18 @@ export const exercises = pgTable("exercises", {
   order: integer("order").notNull(),
 });
 
+export const videoSwitchPoints = pgTable("video_switch_points", {
+  id: serial("id").primaryKey(),
+  exerciseId: integer("exercise_id").references(() => exercises.id).notNull(),
+  timeInSeconds: integer("time_in_seconds").notNull(),
+  nextVideoUrl: text("next_video_url").notNull(),
+  order: integer("order").notNull(),
+});
+
+export const videoSwitchPointsRelations = relations(videoSwitchPoints, ({ one }) => ({
+  exercise: one(exercises, { fields: [videoSwitchPoints.exerciseId], references: [exercises.id] }),
+}));
+
 export const userProgress = pgTable("user_progress", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").references(() => users.id).notNull(),

@@ -25,6 +25,10 @@ const exerciseSchema = z.object({
   professionalAnswerUrl: z.string().url("Must be a valid URL"),
   pdfUrl: z.string().url("Must be a valid URL").optional(),
   order: z.number().min(1, "Order must be at least 1"),
+  switchPoints: z.array(z.object({
+    timeInSeconds: z.number().min(0, "Time must be non-negative"),
+    nextVideoUrl: z.string().url("Must be a valid URL"),
+  })).optional(),
 });
 
 type ExerciseFormData = z.infer<typeof exerciseSchema>;
@@ -55,6 +59,7 @@ export default function AdminExercises() {
       professionalAnswerUrl: "",
       pdfUrl: "",
       order: 1,
+      switchPoints: [],
     },
   });
 
@@ -68,6 +73,7 @@ export default function AdminExercises() {
         professionalAnswerUrl: currentExercise.professionalAnswerUrl,
         pdfUrl: currentExercise.pdfUrl || "",
         order: currentExercise.order,
+        switchPoints: currentExercise.switchPoints || [],
       });
     } else if (!isEditing) {
       form.reset({
@@ -76,6 +82,7 @@ export default function AdminExercises() {
         demoVideoUrl: "",
         professionalAnswerUrl: "",
         order: 1,
+        switchPoints: [],
       });
     }
   }, [isEditing, currentExercise, form]);
@@ -289,6 +296,61 @@ export default function AdminExercises() {
                     </FormItem>
                   )}
                 />
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold">Video Switching Points</h3>
+                  {form.watch('switchPoints')?.map((_, index) => (
+                    <div key={index} className="flex gap-2">
+                      <FormField
+                        control={form.control}
+                        name={`switchPoints.${index}.timeInSeconds`}
+                        render={({ field }) => (
+                          <FormItem className="flex-1">
+                            <FormLabel>Time (seconds)</FormLabel>
+                            <FormControl>
+                              <Input {...field} type="number" min="0" />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name={`switchPoints.${index}.nextVideoUrl`}
+                        render={({ field }) => (
+                          <FormItem className="flex-1">
+                            <FormLabel>Next Video URL</FormLabel>
+                            <FormControl>
+                              <Input {...field} type="url" />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        onClick={() => {
+                          const points = form.getValues('switchPoints');
+                          points.splice(index, 1);
+                          form.setValue('switchPoints', points);
+                        }}
+                      >
+                        Remove
+                      </Button>
+                    </div>
+                  ))}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      const points = form.getValues('switchPoints') || [];
+                      form.setValue('switchPoints', [
+                        ...points,
+                        { timeInSeconds: 0, nextVideoUrl: '' }
+                      ]);
+                    }}
+                  >
+                    Add Switching Point
+                  </Button>
+                </div>
                 <Button type="submit" className="w-full">
                   {isEditing ? "Update Exercise" : "Create Exercise"}
                 </Button>
