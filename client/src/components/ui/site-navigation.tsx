@@ -1,8 +1,10 @@
+
 import * as React from "react";
 import { useLocation } from "wouter";
-import { Menu } from "lucide-react";
+import { Menu, User, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useUser } from "@/hooks/use-user";
 
 export function SiteNavigation() {
@@ -17,19 +19,20 @@ export function SiteNavigation() {
 
   const { user, logout } = useUser();
 
-  const menuItems = user ? [
-    { id: "exercises", label: "Exercises", path: "/dashboard" },
-    { id: "resources", label: "Resources", path: "/resources" },
-    { id: "profile", label: "Profile", path: "/profile" },
-    ...(user.isAdmin ? [{ id: "admin", label: "Admin", path: "/admin/exercises" }] : []),
-    { id: "logout", label: "Logout", onClick: () => logout(), variant: "ghost" as const }
-  ] : [
+  // Main navigation items - consistent for all users
+  const navigationItems = [
     { id: "about", label: "About Advocatr", path: "/about" },
     { id: "how-to-use", label: "How to Use", path: "/how-to-use" },
     { id: "resources", label: "Resources", path: "/resources" },
-    { id: "contact", label: "Contact", path: "/contact" },
-    { id: "register-login", label: "Register/Login", path: "/auth" }
+    { id: "contact", label: "Contact", path: "/contact" }
   ];
+
+  // User account menu items - only shown when logged in
+  const accountMenuItems = user ? [
+    { id: "exercises", label: "Exercises", path: "/dashboard" },
+    { id: "profile", label: "Profile", path: "/profile" },
+    ...(user.isAdmin ? [{ id: "admin", label: "Admin", path: "/admin/exercises" }] : []),
+  ] : [];
 
   if (isMobile) {
     return (
@@ -41,16 +44,53 @@ export function SiteNavigation() {
         </SheetTrigger>
         <SheetContent className="w-[200px] sm:w-[240px]">
           <nav className="flex flex-col gap-2 pt-4">
-            {menuItems.map((item) => (
+            {navigationItems.map((item) => (
               <Button
                 key={item.id}
                 variant="ghost"
                 className="justify-start"
-                onClick={() => item.onClick ? item.onClick() : setLocation(item.path)}
+                onClick={() => setLocation(item.path)}
               >
                 {item.label}
               </Button>
             ))}
+            
+            {user ? (
+              <>
+                <div className="my-2 border-t" />
+                <div className="text-sm font-medium text-muted-foreground px-3 py-2">
+                  My Account
+                </div>
+                {accountMenuItems.map((item) => (
+                  <Button
+                    key={item.id}
+                    variant="ghost"
+                    className="justify-start"
+                    onClick={() => setLocation(item.path)}
+                  >
+                    {item.label}
+                  </Button>
+                ))}
+                <Button
+                  variant="ghost"
+                  className="justify-start text-red-600 hover:text-red-700 hover:bg-red-50"
+                  onClick={() => logout()}
+                >
+                  Sign Out
+                </Button>
+              </>
+            ) : (
+              <>
+                <div className="my-2 border-t" />
+                <Button
+                  variant="default"
+                  className="justify-start"
+                  onClick={() => setLocation("/auth")}
+                >
+                  Register/Login
+                </Button>
+              </>
+            )}
           </nav>
         </SheetContent>
       </Sheet>
@@ -58,17 +98,60 @@ export function SiteNavigation() {
   }
 
   return (
-    <nav className="hidden md:flex items-center gap-1">
-      {menuItems.map((item) => (
+    <div className="hidden md:flex items-center gap-1">
+      {/* Main navigation items */}
+      <nav className="flex items-center gap-1">
+        {navigationItems.map((item) => (
+          <Button
+            key={item.id}
+            variant="ghost"
+            size="sm"
+            onClick={() => setLocation(item.path)}
+          >
+            {item.label}
+          </Button>
+        ))}
+      </nav>
+
+      {/* User account section */}
+      {user ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="sm" className="ml-2">
+              <User className="mr-2 h-4 w-4" />
+              My Account
+              <ChevronDown className="ml-1 h-3 w-3" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-48">
+            {accountMenuItems.map((item) => (
+              <DropdownMenuItem
+                key={item.id}
+                onClick={() => setLocation(item.path)}
+                className="cursor-pointer"
+              >
+                {item.label}
+              </DropdownMenuItem>
+            ))}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={() => logout()}
+              className="cursor-pointer text-red-600 focus:text-red-700 focus:bg-red-50"
+            >
+              Sign Out
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : (
         <Button
-          key={item.id}
-          variant={item.variant || "ghost"}
+          variant="default"
           size="sm"
-          onClick={item.onClick || (() => setLocation(item.path))}
+          onClick={() => setLocation("/auth")}
+          className="ml-2"
         >
-          {item.label}
+          Register/Login
         </Button>
-      ))}
-    </nav>
+      )}
+    </div>
   );
 }
