@@ -19,26 +19,7 @@ export default function LandingPage() {
             <Logo size="lg" />
             <h1 className="text-2xl font-bold">Advocatr</h1>
           </div>
-          <div className="flex items-center">
-            {user ? (
-              <>
-                <Button variant="outline" onClick={() => setLocation("/profile")}>
-                  <User className="mr-2 h-4 w-4" />
-                  My Profile
-                </Button>
-                <Button onClick={() => setLocation("/dashboard")}>
-                  <BookOpen className="mr-2 h-4 w-4" />
-                  Exercises
-                </Button>
-                <Button variant="outline" onClick={() => logout()}>
-                  <LogOut className="mr-2 h-4 w-4" />
-                  Sign Out
-                </Button>
-              </>
-            ) : (
-              <SiteNavigation />
-            )}
-          </div>
+          <SiteNavigation />
         </header>
 
         <main>
