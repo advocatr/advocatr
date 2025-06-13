@@ -28,8 +28,7 @@ export function SiteNavigation() {
     { id: "how-to-use", label: "How to Use", path: "/how-to-use" },
     { id: "resources", label: "Resources", path: "/resources" },
     { id: "contact", label: "Contact", path: "/contact" },
-    { id: "sign-in", label: "Sign In", path: "/auth", variant: "ghost" as const },
-    { id: "get-started", label: "Get Started", path: "/auth" }
+    { id: "register-login", label: "Register/Login", path: "/auth" }
   ];
 
   if (isMobile) {
