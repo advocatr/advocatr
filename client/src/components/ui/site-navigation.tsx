@@ -1,4 +1,3 @@
-
 import * as React from "react";
 import { useLocation } from "wouter";
 import { Menu } from "lucide-react";
@@ -17,20 +16,20 @@ export function SiteNavigation() {
   }, []);
 
   const { user, logout } = useUser();
-  
+
   const menuItems = user ? [
-    { label: "Exercises", path: "/dashboard" },
-    { label: "Resources", path: "/resources" },
-    { label: "Profile", path: "/profile" },
-    ...(user.isAdmin ? [{ label: "Admin", path: "/admin/exercises" }] : []),
-    { label: "Logout", onClick: () => logout(), variant: "ghost" as const }
+    { id: "exercises", label: "Exercises", path: "/dashboard" },
+    { id: "resources", label: "Resources", path: "/resources" },
+    { id: "profile", label: "Profile", path: "/profile" },
+    ...(user.isAdmin ? [{ id: "admin", label: "Admin", path: "/admin/exercises" }] : []),
+    { id: "logout", label: "Logout", onClick: () => logout(), variant: "ghost" as const }
   ] : [
-    { label: "About Advocatr", path: "/about" },
-    { label: "How to Use", path: "/how-to-use" },
-    { label: "Resources", path: "/resources" },
-    { label: "Contact", path: "/contact" },
-    { label: "Sign In", path: "/auth", variant: "ghost" as const },
-    { label: "Get Started", path: "/auth" }
+    { id: "about", label: "About Advocatr", path: "/about" },
+    { id: "how-to-use", label: "How to Use", path: "/how-to-use" },
+    { id: "resources", label: "Resources", path: "/resources" },
+    { id: "contact", label: "Contact", path: "/contact" },
+    { id: "sign-in", label: "Sign In", path: "/auth", variant: "ghost" as const },
+    { id: "get-started", label: "Get Started", path: "/auth" }
   ];
 
   if (isMobile) {
@@ -45,10 +44,10 @@ export function SiteNavigation() {
           <nav className="flex flex-col gap-2 pt-4">
             {menuItems.map((item) => (
               <Button
-                key={item.path}
+                key={item.id}
                 variant="ghost"
                 className="justify-start"
-                onClick={() => setLocation(item.path)}
+                onClick={() => item.onClick ? item.onClick() : setLocation(item.path)}
               >
                 {item.label}
               </Button>
@@ -63,7 +62,7 @@ export function SiteNavigation() {
     <nav className="hidden md:flex items-center gap-1">
       {menuItems.map((item) => (
         <Button
-          key={item.path || item.label}
+          key={item.id}
           variant={item.variant || "ghost"}
           size="sm"
           onClick={item.onClick || (() => setLocation(item.path))}
