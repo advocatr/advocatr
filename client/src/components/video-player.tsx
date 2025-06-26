@@ -24,7 +24,7 @@ export default function VideoPlayer({
   const startRecording = async () => {
     try {
       setError(null);
-      
+
       // Check if getUserMedia is available
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         throw new Error("Your browser doesn't support camera/microphone access. Please use a modern browser like Chrome, Firefox, or Safari.");
@@ -84,21 +84,21 @@ export default function VideoPlayer({
           setError('No video data was recorded. Please try again.');
           return;
         }
-        
+
         const blob = new Blob(chunks, { type: "video/webm" });
         console.log('Final blob size:', blob.size, 'bytes');
         setRecordedChunks([blob]);
-        
+
         // Upload the video to the server
         try {
           const formData = new FormData();
           formData.append('video', blob, 'recording.webm');
-          
+
           const response = await fetch('/api/upload-video', {
             method: 'POST',
             body: formData,
           });
-          
+
           if (response.ok) {
             const { videoUrl } = await response.json();
             onRecordingComplete?.(blob, videoUrl);
@@ -129,7 +129,7 @@ export default function VideoPlayer({
       console.log('MediaRecorder started with format:', mimeType);
     } catch (error) {
       console.error("Error starting recording:", error);
-      
+
       if (error instanceof DOMException) {
         switch (error.name) {
           case 'NotFoundError':
