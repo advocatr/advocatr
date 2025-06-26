@@ -1,5 +1,5 @@
 
-import { AdminLayout } from "@/components/admin-layout";
+
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -179,17 +179,14 @@ export default function AdminToolsPage() {
 
   if (isLoading) {
     return (
-      <AdminLayout>
-        <div className="p-6">
-          <div className="text-center">Loading tools...</div>
-        </div>
-      </AdminLayout>
+      <div className="p-6">
+        <div className="text-center">Loading tools...</div>
+      </div>
     );
   }
 
   return (
-    <AdminLayout>
-      <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6">
         <div className="flex justify-between items-center">
           <h1 className="text-3xl font-bold">Manage Tools</h1>
           <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
@@ -393,6 +390,6 @@ export default function AdminToolsPage() {
           )}
         </div>
       </div>
-    </AdminLayout>
+    </div>
   );
 }
