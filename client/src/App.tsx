@@ -15,13 +15,13 @@ import { Loader2 } from "lucide-react";
 import LandingPage from "@/pages/landing-page";
 import AboutPage from "@/pages/about"; // Added
 import HowToUsePage from "@/pages/how-to-use"; // Added
-import ExercisesPage from "@/pages/exercises"; // Added
-import ResourcesPage from "@/pages/advocacy-resources"; // Added
-import FeedbackPage from "@/pages/feedback"; // Added
+import ExercisesPage from "@/pages/exercises";
+import ResourcesPage from "@/pages/advocacy-resources";
+import FeedbackPage from "@/pages/feedback";
 import ContactUsPage from "@/pages/contact-us";
 import ToolsPage from "@/pages/tools";
 import TermsAndConditionsPage from "@/pages/terms-and-conditions";
-import AdminToolsPage from "@/pages/admin/tools"; // Added
+import AdminToolsPage from "@/pages/admin/tools";
 
 function AdminRoute({
   component: Component,
