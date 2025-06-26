@@ -209,17 +209,47 @@ export default function Exercise() {
                     {progress.feedback.map((feedback) => (
                       <div
                         key={feedback.id}
-                        className="bg-gray-50 p-4 rounded-lg"
+                        className={`p-4 rounded-lg ${
+                          feedback.isAiGenerated 
+                            ? "bg-blue-50 border border-blue-200" 
+                            : "bg-gray-50"
+                        }`}
                       >
                         <div className="flex justify-between items-center mb-2">
-                          <div className="font-medium">
-                            Rating: {feedback.rating}/5
+                          <div className="flex items-center gap-2">
+                            <div className="font-medium">
+                              Rating: {feedback.rating}/5
+                            </div>
+                            {feedback.isAiGenerated && (
+                              <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full">
+                                AI Generated
+                              </span>
+                            )}
+                            {feedback.aiConfidenceScore && (
+                              <span className="text-xs text-blue-600">
+                                Confidence: {feedback.aiConfidenceScore}%
+                              </span>
+                            )}
                           </div>
                           <div className="text-sm text-gray-500">
                             {new Date(feedback.createdAt).toLocaleDateString()}
                           </div>
                         </div>
-                        <p className="text-gray-700">{feedback.content}</p>
+                        <p className={`${
+                          feedback.isAiGenerated ? "text-blue-800" : "text-gray-700"
+                        }`}>
+                          {feedback.content}
+                        </p>
+                        {feedback.aiAnalysisStatus === "processing" && (
+                          <div className="mt-2 text-blue-600 text-sm">
+                            ⏳ Analyzing video...
+                          </div>
+                        )}
+                        {feedback.aiAnalysisStatus === "failed" && (
+                          <div className="mt-2 text-red-600 text-sm">
+                            ❌ Analysis failed
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>

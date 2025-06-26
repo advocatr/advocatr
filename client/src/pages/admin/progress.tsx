@@ -85,6 +85,38 @@ export default function AdminProgress() {
     },
   });
 
+  const aiAnalysisMutation = useMutation({
+    mutationFn: async (progressId: number) => {
+      const response = await fetch(`/api/ai-feedback/${progressId}`, {
+        method: "POST",
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "Failed to trigger AI analysis");
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({ 
+        title: "AI Analysis Started", 
+        description: "AI feedback will be generated shortly" 
+      });
+      // Refetch after a delay to show the pending status
+      setTimeout(() => refetch(), 1000);
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const triggerAiAnalysis = (progressId: number) => {
+    aiAnalysisMutation.mutate(progressId);
+  };
+
   const resetPasswordMutation = useMutation({
     mutationFn: async ({ userId, password }: { userId: number; password: string }) => {
       const response = await fetch(`/api/admin/users/${userId}/reset-password`, {
@@ -161,10 +193,21 @@ export default function AdminProgress() {
                         variant="outline"
                         size="sm"
                         onClick={() => resetMutation.mutate(p.id)}
+                        disabled={resetMutation.isPending}
                       >
                         <RotateCcw className="mr-2 h-4 w-4" />
                         Reset Progress
                       </Button>
+                      {p.videoUrl && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => triggerAiAnalysis(p.id)}
+                          className="bg-blue-50 text-blue-700 hover:bg-blue-100"
+                        >
+                          🤖 AI Analysis
+                        </Button>
+                      )}
                       <Dialog
                         open={selectedUserId === p.userId}
                         onOpenChange={(open) => {

@@ -44,6 +44,9 @@ export const feedback = pgTable("feedback", {
   progressId: integer("progress_id").references(() => userProgress.id).notNull(),
   content: text("content").notNull(),
   rating: integer("rating").notNull(),
+  isAiGenerated: boolean("is_ai_generated").default(false).notNull(),
+  aiAnalysisStatus: text("ai_analysis_status"), // 'pending', 'processing', 'completed', 'failed'
+  aiConfidenceScore: integer("ai_confidence_score"), // 1-100
   createdAt: timestamp("created_at").defaultNow(),
 });
 

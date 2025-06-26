@@ -28,6 +28,63 @@ async function generateResetToken(userId: number) {
   return resetToken;
 }
 
+async function processAiAnalysis(feedbackId: number, videoUrl: string) {
+  try {
+    // Update status to processing
+    await db
+      .update(feedback)
+      .set({ aiAnalysisStatus: "processing" })
+      .where(eq(feedback.id, feedbackId));
+
+    // Mock AI analysis - replace with actual AI service call
+    const mockFeedback = generateMockAiFeedback();
+    
+    // Simulate processing time
+    await new Promise(resolve => setTimeout(resolve, 3000));
+
+    // Update with AI results
+    await db
+      .update(feedback)
+      .set({
+        content: mockFeedback.content,
+        rating: mockFeedback.rating,
+        aiAnalysisStatus: "completed",
+        aiConfidenceScore: mockFeedback.confidenceScore,
+      })
+      .where(eq(feedback.id, feedbackId));
+
+    console.log(`AI analysis completed for feedback ${feedbackId}`);
+  } catch (error) {
+    console.error("AI analysis failed:", error);
+    await db
+      .update(feedback)
+      .set({ aiAnalysisStatus: "failed" })
+      .where(eq(feedback.id, feedbackId));
+  }
+}
+
+function generateMockAiFeedback() {
+  const feedbackOptions = [
+    {
+      content: "Strong opening statement with clear identification of key legal issues. Good use of authorities, though could benefit from more detailed factual analysis. Voice projection and pace were appropriate for the courtroom setting.",
+      rating: 4,
+      confidenceScore: 85
+    },
+    {
+      content: "Excellent command of the facts and law. Persuasive argument structure with effective use of precedent. Consider addressing potential counterarguments more directly. Overall, a confident and well-prepared advocacy performance.",
+      rating: 5,
+      confidenceScore: 92
+    },
+    {
+      content: "Good foundation but could strengthen argument structure. Some hesitation noted - practice will help with fluency. Legal reasoning is sound, but consider reorganizing points for maximum impact. Voice clarity is good.",
+      rating: 3,
+      confidenceScore: 78
+    }
+  ];
+
+  return feedbackOptions[Math.floor(Math.random() * feedbackOptions.length)];
+}
+
 function isAdmin(req: Express.Request, res: Express.Response, next: Express.NextFunction) {
   if (!req.isAuthenticated() || !req.user.isAdmin) {
     return res.status(403).send("Unauthorized");
@@ -404,6 +461,81 @@ export function registerRoutes(app: Express): Server {
       console.error("Error sending contact email:", error);
       res.status(500).json({ message: "Failed to send message" });
     }
+  });
+
+  // Trigger AI analysis for a progress record
+  app.post("/api/ai-feedback/:progressId", async (req, res) => {
+    if (!req.isAuthenticated() || !req.user.isAdmin) {
+      return res.status(403).send("Unauthorized");
+    }
+
+    const progressId = parseInt(req.params.progressId);
+
+    // Verify that the progress record exists and has a video
+    const [userProgressRecord] = await db
+      .select()
+      .from(userProgress)
+      .where(eq(userProgress.id, progressId));
+
+    if (!userProgressRecord || !userProgressRecord.videoUrl) {
+      return res.status(404).send("Progress record not found or no video submitted");
+    }
+
+    // Check if AI feedback already exists
+    const existingAiFeedback = await db
+      .select()
+      .from(feedback)
+      .where(
+        and(
+          eq(feedback.progressId, progressId),
+          eq(feedback.isAiGenerated, true)
+        )
+      );
+
+    if (existingAiFeedback.length > 0) {
+      return res.status(400).json({ message: "AI feedback already exists for this submission" });
+    }
+
+    // Create pending AI feedback record
+    const [aiFeedback] = await db
+      .insert(feedback)
+      .values({
+        progressId,
+        content: "AI analysis pending...",
+        rating: 3, // Default neutral rating
+        isAiGenerated: true,
+        aiAnalysisStatus: "pending",
+        aiConfidenceScore: null,
+      })
+      .returning();
+
+    // Simulate AI processing (replace with actual AI call later)
+    setTimeout(async () => {
+      await processAiAnalysis(aiFeedback.id, userProgressRecord.videoUrl);
+    }, 2000);
+
+    res.json({ message: "AI analysis initiated", feedbackId: aiFeedback.id });
+  });
+
+  // Get AI feedback status
+  app.get("/api/ai-feedback/:progressId/status", async (req, res) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).send("Not authenticated");
+    }
+
+    const progressId = parseInt(req.params.progressId);
+
+    const [aiFeedback] = await db
+      .select()
+      .from(feedback)
+      .where(
+        and(
+          eq(feedback.progressId, progressId),
+          eq(feedback.isAiGenerated, true)
+        )
+      );
+
+    res.json(aiFeedback || null);
   });
 
   // Tools API endpoints
