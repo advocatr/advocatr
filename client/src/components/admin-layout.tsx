@@ -7,7 +7,7 @@ interface AdminLayoutProps {
   children: React.ReactNode;
 }
 
-export default function AdminLayout({ children }: AdminLayoutProps) {
+export function AdminLayout({ children }: AdminLayoutProps) {
   const { user, logout } = useUser();
   const [location, setLocation] = useLocation();
 
