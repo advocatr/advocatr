@@ -519,10 +519,11 @@ export function registerRoutes(app: Express): Server {
     try {
       const filename = decodeURIComponent(req.params.filename);
       const videoData = await objectStorage.downloadAsBytes(filename);
+      const buffer = Buffer.from(videoData);
       
       res.setHeader('Content-Type', 'video/webm');
-      res.setHeader('Content-Length', videoData.length);
-      res.send(Buffer.from(videoData));
+      res.setHeader('Content-Length', buffer.length.toString());
+      res.send(buffer);
     } catch (error) {
       console.error("Error serving video:", error);
       res.status(404).json({ message: "Video not found" });

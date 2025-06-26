@@ -74,11 +74,19 @@ export default function VideoPlayer({
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
           chunks.push(event.data);
+          console.log('Data chunk received:', event.data.size, 'bytes');
         }
       };
 
       mediaRecorder.onstop = async () => {
+        console.log('MediaRecorder stopped, total chunks:', chunks.length);
+        if (chunks.length === 0) {
+          setError('No video data was recorded. Please try again.');
+          return;
+        }
+        
         const blob = new Blob(chunks, { type: "video/webm" });
+        console.log('Final blob size:', blob.size, 'bytes');
         setRecordedChunks([blob]);
         
         // Upload the video to the server
@@ -115,8 +123,10 @@ export default function VideoPlayer({
         }
       };
 
-      mediaRecorder.start();
+      // Request data every 1000ms to ensure we capture data
+      mediaRecorder.start(1000);
       setIsRecording(true);
+      console.log('MediaRecorder started with format:', mimeType);
     } catch (error) {
       console.error("Error starting recording:", error);
       
