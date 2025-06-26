@@ -75,15 +75,29 @@ export default function VideoPlayer({
       const chunks: Blob[] = [];
       
       mediaRecorder.ondataavailable = (event) => {
-        console.log('Data available event:', event.data.size, 'bytes');
+        console.log('Data available event triggered, data size:', event.data?.size, 'bytes');
+        console.log('Event data type:', event.data?.type);
+        console.log('Event data object:', event.data);
+        
         if (event.data && event.data.size > 0) {
           chunks.push(event.data);
-          console.log('Data chunk received:', event.data.size, 'bytes', 'Total chunks:', chunks.length);
+          console.log('Data chunk added to chunks array. Chunk size:', event.data.size, 'bytes', 'Total chunks:', chunks.length);
+        } else {
+          console.warn('Data available event fired but no usable data:', {
+            hasData: !!event.data,
+            size: event.data?.size,
+            type: event.data?.type
+          });
         }
       };
 
       mediaRecorder.onstart = () => {
-        console.log('MediaRecorder started successfully');
+        console.log('MediaRecorder started successfully, state:', mediaRecorder.state);
+        console.log('Stream tracks:', stream.getTracks().map(track => ({
+          kind: track.kind,
+          enabled: track.enabled,
+          readyState: track.readyState
+        })));
       };
 
       mediaRecorder.onerror = (event) => {
@@ -92,18 +106,31 @@ export default function VideoPlayer({
       };
 
       mediaRecorder.onstop = async () => {
-        console.log('MediaRecorder stopped, total chunks:', chunks.length);
+        console.log('MediaRecorder stopped, total chunks collected:', chunks.length);
+        console.log('Chunks details:', chunks.map((chunk, i) => ({
+          index: i,
+          size: chunk.size,
+          type: chunk.type
+        })));
         
-        // Give a small delay to ensure all data events are processed
-        await new Promise(resolve => setTimeout(resolve, 100));
+        // Give time for any final data events
+        await new Promise(resolve => setTimeout(resolve, 200));
         
         if (chunks.length === 0) {
-          setError('No video data was recorded. Please try again.');
+          console.error('No chunks collected during recording');
+          setError('No video data was recorded. This might be a browser compatibility issue. Please try refreshing the page.');
           return;
         }
 
         const blob = new Blob(chunks, { type: mimeType });
-        console.log('Final blob size:', blob.size, 'bytes', 'type:', blob.type);
+        console.log('Final blob created - size:', blob.size, 'bytes', 'type:', blob.type);
+        
+        if (blob.size === 0) {
+          console.error('Blob size is 0 despite having chunks');
+          setError('Recording failed to capture video data. Please try again.');
+          return;
+        }
+        
         setRecordedChunks([blob]);
 
         // Upload the video to the server
@@ -140,12 +167,28 @@ export default function VideoPlayer({
         }
       };
 
-      // Start recording with timeslice to ensure regular data capture
+      // Start recording - try different approaches for better compatibility
       console.log('Starting MediaRecorder with format:', mimeType);
-      mediaRecorder.start(100); // Request data every 100ms for better capture
+      console.log('MediaRecorder state before start:', mediaRecorder.state);
+      
+      // Try starting without timeslice first, then with timeslice if needed
+      try {
+        mediaRecorder.start(); // Start without timeslice
+        console.log('MediaRecorder started without timeslice');
+      } catch (error) {
+        console.warn('Failed to start without timeslice, trying with timeslice:', error);
+        try {
+          mediaRecorder.start(1000); // Fall back to 1-second timeslice
+          console.log('MediaRecorder started with 1-second timeslice');
+        } catch (fallbackError) {
+          console.error('Failed to start MediaRecorder with any method:', fallbackError);
+          throw new Error('MediaRecorder failed to start');
+        }
+      }
+      
       setIsRecording(true);
       
-      // Verify that recording actually started
+      // Verify recording started and force data collection
       setTimeout(() => {
         if (mediaRecorder.state !== 'recording') {
           console.error('MediaRecorder failed to start, state:', mediaRecorder.state);
@@ -153,6 +196,13 @@ export default function VideoPlayer({
           setIsRecording(false);
         } else {
           console.log('MediaRecorder confirmed recording, state:', mediaRecorder.state);
+          // Force request data to ensure we get at least one chunk
+          setTimeout(() => {
+            if (mediaRecorder.state === 'recording') {
+              console.log('Requesting data from MediaRecorder');
+              mediaRecorder.requestData();
+            }
+          }, 1000);
         }
       }, 500);
     } catch (error) {
@@ -190,12 +240,21 @@ export default function VideoPlayer({
       
       // Request any pending data before stopping
       if (mediaRecorderRef.current.state === 'recording') {
+        console.log('Requesting final data before stop');
         mediaRecorderRef.current.requestData();
+        
+        // Wait a bit longer and request data again, then stop
         setTimeout(() => {
           if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-            mediaRecorderRef.current.stop();
+            console.log('Requesting data again and stopping');
+            mediaRecorderRef.current.requestData();
+            setTimeout(() => {
+              if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+                mediaRecorderRef.current.stop();
+              }
+            }, 200);
           }
-        }, 100);
+        }, 300);
       }
       
       setIsRecording(false);
