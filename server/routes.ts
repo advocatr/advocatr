@@ -521,11 +521,19 @@ export function registerRoutes(app: Express): Server {
       console.log("Requesting video file:", filename);
       
       const videoData = await objectStorage.downloadAsBytes(filename);
-      console.log("Downloaded video data type:", typeof videoData, "length:", videoData?.length);
+      console.log("Downloaded video data type:", typeof videoData, "structure:", videoData);
       
-      // Handle the case where videoData might be a Uint8Array or similar
+      // Handle Replit object storage response format
       let buffer: Buffer;
-      if (Buffer.isBuffer(videoData)) {
+      if (videoData && typeof videoData === 'object' && 'value' in videoData) {
+        // Replit object storage returns { ok: true, value: [Buffer] }
+        const bufferArray = videoData.value;
+        if (Array.isArray(bufferArray) && bufferArray.length > 0) {
+          buffer = bufferArray[0]; // Get the first buffer from the array
+        } else {
+          throw new Error("No buffer data in object storage response");
+        }
+      } else if (Buffer.isBuffer(videoData)) {
         buffer = videoData;
       } else if (videoData instanceof Uint8Array) {
         buffer = Buffer.from(videoData);
