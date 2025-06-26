@@ -66,27 +66,44 @@ export default function VideoPlayer({
       }
 
       const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: mimeType
+        mimeType: mimeType,
+        videoBitsPerSecond: 250000,
+        audioBitsPerSecond: 128000
       });
       mediaRecorderRef.current = mediaRecorder;
 
       const chunks: Blob[] = [];
+      
       mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
+        console.log('Data available event:', event.data.size, 'bytes');
+        if (event.data && event.data.size > 0) {
           chunks.push(event.data);
-          console.log('Data chunk received:', event.data.size, 'bytes');
+          console.log('Data chunk received:', event.data.size, 'bytes', 'Total chunks:', chunks.length);
         }
+      };
+
+      mediaRecorder.onstart = () => {
+        console.log('MediaRecorder started successfully');
+      };
+
+      mediaRecorder.onerror = (event) => {
+        console.error('MediaRecorder error:', event);
+        setError('Recording error occurred. Please try again.');
       };
 
       mediaRecorder.onstop = async () => {
         console.log('MediaRecorder stopped, total chunks:', chunks.length);
+        
+        // Give a small delay to ensure all data events are processed
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
         if (chunks.length === 0) {
           setError('No video data was recorded. Please try again.');
           return;
         }
 
-        const blob = new Blob(chunks, { type: "video/webm" });
-        console.log('Final blob size:', blob.size, 'bytes');
+        const blob = new Blob(chunks, { type: mimeType });
+        console.log('Final blob size:', blob.size, 'bytes', 'type:', blob.type);
         setRecordedChunks([blob]);
 
         // Upload the video to the server
@@ -123,10 +140,21 @@ export default function VideoPlayer({
         }
       };
 
-      // Request data every 1000ms to ensure we capture data
-      mediaRecorder.start(1000);
+      // Start recording with timeslice to ensure regular data capture
+      console.log('Starting MediaRecorder with format:', mimeType);
+      mediaRecorder.start(100); // Request data every 100ms for better capture
       setIsRecording(true);
-      console.log('MediaRecorder started with format:', mimeType);
+      
+      // Verify that recording actually started
+      setTimeout(() => {
+        if (mediaRecorder.state !== 'recording') {
+          console.error('MediaRecorder failed to start, state:', mediaRecorder.state);
+          setError('Failed to start recording. Please try again.');
+          setIsRecording(false);
+        } else {
+          console.log('MediaRecorder confirmed recording, state:', mediaRecorder.state);
+        }
+      }, 500);
     } catch (error) {
       console.error("Error starting recording:", error);
 
@@ -158,7 +186,18 @@ export default function VideoPlayer({
 
   const stopRecording = () => {
     if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
+      console.log('Stopping MediaRecorder, current state:', mediaRecorderRef.current.state);
+      
+      // Request any pending data before stopping
+      if (mediaRecorderRef.current.state === 'recording') {
+        mediaRecorderRef.current.requestData();
+        setTimeout(() => {
+          if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+            mediaRecorderRef.current.stop();
+          }
+        }, 100);
+      }
+      
       setIsRecording(false);
     }
   };
