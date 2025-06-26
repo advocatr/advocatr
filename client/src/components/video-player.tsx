@@ -1,3 +1,4 @@
+
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Play, Pause, Square, Circle } from "lucide-react";
@@ -31,254 +32,288 @@ export default function VideoPlayer({
     }
 
     return () => {
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((track) => track.stop());
-      }
-      if (recorderRef.current && recorderRef.current.state !== 'inactive') {
-        recorderRef.current.stop();
-      }
+      cleanup();
     };
   }, [isRecordingEnabled]);
+
+  const cleanup = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => {
+        track.stop();
+        console.log(`Stopped ${track.kind} track`);
+      });
+      streamRef.current = null;
+    }
+    if (recorderRef.current && recorderRef.current.state !== 'inactive') {
+      recorderRef.current.stop();
+    }
+    recorderRef.current = null;
+  };
 
   const initializeCamera = async () => {
     try {
       setError(null);
+      console.log("Initializing camera...");
 
-      // Check if getUserMedia is available
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        throw new Error("Camera/microphone access is not supported in this browser or environment.");
+      // Clean up any existing streams
+      cleanup();
+
+      // Check browser support
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new Error("getUserMedia is not supported in this browser");
       }
 
-      // Check permissions first
-      try {
-        const permissions = await Promise.all([
-          navigator.permissions.query({ name: 'camera' as PermissionName }),
-          navigator.permissions.query({ name: 'microphone' as PermissionName })
-        ]);
-
-        console.log("Permission states:", {
-          camera: permissions[0].state,
-          microphone: permissions[1].state
-        });
-      } catch (permError) {
-        console.log("Permission check not available, proceeding with getUserMedia");
+      if (!window.MediaRecorder) {
+        throw new Error("MediaRecorder is not supported in this browser");
       }
 
-      console.log("Requesting camera/microphone access...");
+      // Get user media with basic constraints
+      console.log("Requesting user media...");
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: true,
+      });
 
-      let stream: MediaStream;
-      
-      try {
-        // Try with detailed constraints first
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            width: { ideal: 1280, min: 640 },
-            height: { ideal: 720, min: 480 },
-            facingMode: "user",
-          },
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            sampleRate: 44100,
-          },
-        });
-      } catch (detailedError) {
-        console.log("Detailed constraints failed, trying basic constraints:", detailedError);
-        
-        // Fallback to basic constraints
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: true,
-          audio: true,
-        });
+      console.log("Got media stream with tracks:", stream.getTracks().map(t => ({
+        kind: t.kind,
+        enabled: t.enabled,
+        readyState: t.readyState,
+        label: t.label
+      })));
+
+      // Validate stream
+      const videoTracks = stream.getVideoTracks();
+      const audioTracks = stream.getAudioTracks();
+
+      if (videoTracks.length === 0) {
+        throw new Error("No video track found");
+      }
+      if (audioTracks.length === 0) {
+        throw new Error("No audio track found");
+      }
+
+      // Check track states
+      const inactiveTracks = stream.getTracks().filter(t => t.readyState !== 'live');
+      if (inactiveTracks.length > 0) {
+        throw new Error(`Some tracks are not active: ${inactiveTracks.map(t => t.kind).join(', ')}`);
       }
 
       streamRef.current = stream;
 
+      // Setup preview video
       if (previewVideoRef.current) {
         previewVideoRef.current.srcObject = stream;
-        previewVideoRef.current.muted = true; // Prevent feedback
+        previewVideoRef.current.muted = true;
+        
+        // Wait for video to be ready
+        await new Promise((resolve, reject) => {
+          const video = previewVideoRef.current!;
+          const onLoadedData = () => {
+            video.removeEventListener('loadeddata', onLoadedData);
+            video.removeEventListener('error', onError);
+            resolve(void 0);
+          };
+          const onError = (e: any) => {
+            video.removeEventListener('loadeddata', onLoadedData);
+            video.removeEventListener('error', onError);
+            reject(new Error('Video preview failed to load'));
+          };
+          video.addEventListener('loadeddata', onLoadedData);
+          video.addEventListener('error', onError);
+        });
+
         await previewVideoRef.current.play();
       }
 
       setIsInitialized(true);
-      console.log(
-        "Camera initialized successfully with tracks:",
-        stream
-          .getTracks()
-          .map((t) => ({
-            kind: t.kind,
-            enabled: t.enabled,
-            readyState: t.readyState,
-          })),
-      );
+      console.log("Camera initialized successfully");
+
     } catch (error) {
-      console.error("Error accessing camera:", error);
-
-      let errorMessage = "Camera access failed. ";
-
+      console.error("Camera initialization failed:", error);
+      cleanup();
+      
+      let errorMessage = "Camera initialization failed: ";
       if (error instanceof Error) {
-        console.log("Error details:", { name: error.name, message: error.message });
-
-        if (error.name === "NotAllowedError" || error.name === "PermissionDeniedError") {
-          errorMessage += "Please ensure camera/microphone permissions are granted in your browser settings.";
-        } else if (error.name === "NotFoundError" || error.name === "DevicesNotFoundError") {
-          errorMessage += "No camera or microphone detected on this device.";
+        if (error.name === "NotAllowedError") {
+          errorMessage += "Camera permission denied. Please allow camera access and try again.";
+        } else if (error.name === "NotFoundError") {
+          errorMessage += "No camera or microphone found on this device.";
         } else if (error.name === "NotSupportedError") {
-          errorMessage += "This browser doesn't support camera access or requires HTTPS.";
-        } else if (error.name === "OverconstrainedError") {
-          errorMessage += "Camera settings not supported. Try refreshing the page.";
+          errorMessage += "Camera access not supported. Please use HTTPS or a supported browser.";
         } else {
-          errorMessage += "Please refresh the page and try again.";
+          errorMessage += error.message;
         }
       } else {
-        errorMessage += "Unknown error occurred. Please refresh and try again.";
+        errorMessage += "Unknown error occurred.";
       }
-
+      
       setError(errorMessage);
+      setIsInitialized(false);
     }
   };
 
   const startRecording = async () => {
     try {
       setError(null);
+      console.log("Starting recording...");
 
       if (!streamRef.current) {
-        await initializeCamera();
-        if (!streamRef.current) {
-          setError("Camera not available. Please refresh and try again.");
-          return;
-        }
+        throw new Error("No media stream available");
       }
 
-      // Validate stream has active tracks
+      // Validate stream is still active
       const activeTracks = streamRef.current.getTracks().filter(t => t.readyState === 'live');
       if (activeTracks.length === 0) {
-        setError("No active media tracks available. Please refresh and try again.");
-        return;
+        throw new Error("No active media tracks");
       }
 
-      console.log("Active tracks for recording:", activeTracks.map(t => ({ 
-        kind: t.kind, 
-        enabled: t.enabled, 
-        readyState: t.readyState 
+      console.log("Active tracks:", activeTracks.map(t => ({
+        kind: t.kind,
+        enabled: t.enabled,
+        readyState: t.readyState
       })));
 
-      // Reset recorded chunks
+      // Clear previous recordings
       recordedChunksRef.current = [];
 
-      // Determine the best supported MIME type
-      const mimeTypes = [
+      // Test MediaRecorder support with different codecs
+      const supportedTypes = [
         'video/webm;codecs=vp9,opus',
-        'video/webm;codecs=vp8,opus',
+        'video/webm;codecs=vp8,opus', 
+        'video/webm;codecs=vp8',
         'video/webm',
-        'video/mp4',
+        'video/mp4'
       ];
 
-      let selectedMimeType = '';
-      for (const mimeType of mimeTypes) {
-        if (MediaRecorder.isTypeSupported(mimeType)) {
-          selectedMimeType = mimeType;
-          console.log('Using MIME type:', mimeType);
+      let selectedType = '';
+      for (const type of supportedTypes) {
+        if (MediaRecorder.isTypeSupported(type)) {
+          selectedType = type;
+          console.log('Selected MIME type:', type);
           break;
         }
       }
 
-      if (!selectedMimeType) {
-        throw new Error('No supported video MIME type found');
+      if (!selectedType) {
+        throw new Error('No supported recording format found');
       }
 
-      // Create MediaRecorder
-      const recorder = new MediaRecorder(streamRef.current, {
-        mimeType: selectedMimeType,
-        videoBitsPerSecond: 1000000, // 1Mbps
-        audioBitsPerSecond: 128000,  // 128kbps
+      // Create MediaRecorder with validated stream
+      const mediaRecorder = new MediaRecorder(streamRef.current, {
+        mimeType: selectedType,
+        videoBitsPerSecond: 500000, // 500kbps
+        audioBitsPerSecond: 64000,  // 64kbps
       });
 
-      // Handle data available
-      recorder.ondataavailable = (event) => {
-        console.log('Data available:', event.data.size, 'bytes');
-        if (event.data.size > 0) {
+      // Setup event handlers before starting
+      let hasReceivedData = false;
+
+      mediaRecorder.ondataavailable = (event) => {
+        console.log('Data available event:', {
+          dataSize: event.data.size,
+          dataType: event.data.type,
+          timestamp: event.timeStamp
+        });
+        
+        if (event.data && event.data.size > 0) {
           recordedChunksRef.current.push(event.data);
+          hasReceivedData = true;
         }
       };
 
-      // Handle recording stop
-      recorder.onstop = () => {
-        console.log('Recording stopped, chunks:', recordedChunksRef.current.length);
-        
-        if (recordedChunksRef.current.length === 0) {
-          setError("No data was recorded. Please try again.");
+      mediaRecorder.onstop = () => {
+        console.log('MediaRecorder stopped');
+        console.log('Total chunks collected:', recordedChunksRef.current.length);
+        console.log('Chunk sizes:', recordedChunksRef.current.map(chunk => chunk.size));
+
+        if (!hasReceivedData || recordedChunksRef.current.length === 0) {
+          setError("No data was recorded. This might be a browser compatibility issue.");
           return;
         }
 
-        const blob = new Blob(recordedChunksRef.current, { type: selectedMimeType });
-        console.log('Final blob:', { size: blob.size, type: blob.type });
-        
-        if (blob.size === 0) {
-          setError("Recording failed - empty file. Please try again.");
+        const totalSize = recordedChunksRef.current.reduce((sum, chunk) => sum + chunk.size, 0);
+        console.log('Total recorded size:', totalSize, 'bytes');
+
+        if (totalSize === 0) {
+          setError("Recording produced empty file. Please try again.");
           return;
         }
 
-        uploadVideo(blob);
+        const finalBlob = new Blob(recordedChunksRef.current, { type: selectedType });
+        console.log('Final blob created:', {
+          size: finalBlob.size,
+          type: finalBlob.type
+        });
+
+        uploadVideo(finalBlob);
       };
 
-      // Handle errors
-      recorder.onerror = (event) => {
-        console.error('Recording error:', event);
-        setError('Recording failed due to an error. Please try again.');
+      mediaRecorder.onerror = (event) => {
+        console.error('MediaRecorder error:', event);
+        setError('Recording failed due to MediaRecorder error');
       };
 
-      recorderRef.current = recorder;
+      mediaRecorder.onstart = () => {
+        console.log('MediaRecorder started');
+      };
 
-      console.log("Starting MediaRecorder recording...");
-      recorder.start(1000); // Collect data every second
+      recorderRef.current = mediaRecorder;
+
+      // Start recording
+      console.log('Starting MediaRecorder...');
+      mediaRecorder.start(100); // Collect data every 100ms
       setIsRecording(true);
 
     } catch (error) {
-      console.error("Error starting recording:", error);
-      setError(
-        error instanceof Error
-          ? error.message
-          : "Failed to start recording. Please try again.",
-      );
+      console.error("Failed to start recording:", error);
+      setError(error instanceof Error ? error.message : "Failed to start recording");
     }
   };
 
   const stopRecording = () => {
-    if (recorderRef.current && isRecording && recorderRef.current.state !== 'inactive') {
-      console.log("Stopping MediaRecorder recording...");
+    console.log("Stopping recording...");
+    
+    if (recorderRef.current && recorderRef.current.state === 'recording') {
       setIsRecording(false);
       recorderRef.current.stop();
+    } else {
+      console.log("MediaRecorder not in recording state:", recorderRef.current?.state);
+      setError("Recording was not active");
     }
   };
 
   const uploadVideo = async (blob: Blob) => {
     try {
+      console.log("Uploading video blob:", {
+        size: blob.size,
+        type: blob.type
+      });
+
+      if (blob.size === 0) {
+        throw new Error("Cannot upload empty file");
+      }
+
       const formData = new FormData();
       formData.append("video", blob, "recording.webm");
-
-      console.log("Uploading video file. Size:", blob.size, "bytes");
 
       const response = await fetch("/api/upload-video", {
         method: "POST",
         body: formData,
       });
 
-      if (response.ok) {
-        const { videoUrl } = await response.json();
-        console.log("Video uploaded successfully:", videoUrl);
-        onRecordingComplete?.(blob, videoUrl);
-      } else {
+      if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(
-          errorData.message || `Upload failed with status: ${response.status}`,
-        );
+        throw new Error(errorData.message || `Upload failed: ${response.status}`);
       }
+
+      const { videoUrl } = await response.json();
+      console.log("Upload successful:", videoUrl);
+      onRecordingComplete?.(blob, videoUrl);
+
     } catch (error) {
-      console.error("Error uploading video:", error);
-      setError(
-        `Failed to upload video: ${error instanceof Error ? error.message : "Please try again."}`,
-      );
+      console.error("Upload failed:", error);
+      setError(`Upload failed: ${error instanceof Error ? error.message : "Unknown error"}`);
+      // Still call the callback with the blob so the user has the data
       onRecordingComplete?.(blob);
     }
   };
@@ -312,7 +347,7 @@ export default function VideoPlayer({
             muted
             playsInline
             className="w-full h-64 object-cover"
-            style={{ transform: "scaleX(-1)" }} // Mirror the video for better UX
+            style={{ transform: "scaleX(-1)" }}
           />
         ) : (
           <video
@@ -328,6 +363,17 @@ export default function VideoPlayer({
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-3">
           <p className="text-red-700 text-sm">{error}</p>
+          <button 
+            onClick={() => {
+              setError(null);
+              if (isRecordingEnabled) {
+                initializeCamera();
+              }
+            }}
+            className="text-red-600 underline text-sm mt-1"
+          >
+            Try again
+          </button>
         </div>
       )}
 
@@ -337,10 +383,10 @@ export default function VideoPlayer({
             <Button
               onClick={startRecording}
               className="flex items-center gap-2"
-              disabled={!isInitialized && isRecordingEnabled}
+              disabled={!isInitialized}
             >
               <Circle className="h-4 w-4 text-red-500" fill="currentColor" />
-              Start Recording
+              {isInitialized ? "Start Recording" : "Initializing..."}
             </Button>
           ) : (
             <Button
