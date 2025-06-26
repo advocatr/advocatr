@@ -406,6 +406,119 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
+  // Tools API endpoints
+  app.get("/api/tools", async (req, res) => {
+    try {
+      const { tools } = await import("@db/schema");
+      const activeTools = await db
+        .select()
+        .from(tools)
+        .where(eq(tools.isActive, true))
+        .orderBy(tools.createdAt);
+      res.json(activeTools);
+    } catch (error) {
+      console.error("Error fetching tools:", error);
+      res.status(500).json({ message: "Failed to fetch tools" });
+    }
+  });
+
+  // Admin tools endpoints
+  app.get("/api/admin/tools", isAdmin, async (req, res) => {
+    try {
+      const { tools } = await import("@db/schema");
+      const allTools = await db
+        .select()
+        .from(tools)
+        .orderBy(tools.createdAt);
+      res.json(allTools);
+    } catch (error) {
+      console.error("Error fetching admin tools:", error);
+      res.status(500).json({ message: "Failed to fetch tools" });
+    }
+  });
+
+  app.post("/api/admin/tools", isAdmin, async (req, res) => {
+    try {
+      const { tools } = await import("@db/schema");
+      const { title, description, downloadUrl, images, isActive } = req.body;
+
+      if (!title || !description || !downloadUrl) {
+        return res.status(400).json({ message: "Title, description, and download URL are required" });
+      }
+
+      const [newTool] = await db
+        .insert(tools)
+        .values({
+          title,
+          description,
+          downloadUrl,
+          images: images || [],
+          isActive: isActive !== undefined ? isActive : true,
+        })
+        .returning();
+
+      res.json(newTool);
+    } catch (error) {
+      console.error("Error creating tool:", error);
+      res.status(500).json({ message: "Failed to create tool" });
+    }
+  });
+
+  app.put("/api/admin/tools/:id", isAdmin, async (req, res) => {
+    try {
+      const { tools } = await import("@db/schema");
+      const toolId = parseInt(req.params.id);
+      const { title, description, downloadUrl, images, isActive } = req.body;
+
+      if (!title || !description || !downloadUrl) {
+        return res.status(400).json({ message: "Title, description, and download URL are required" });
+      }
+
+      const [updatedTool] = await db
+        .update(tools)
+        .set({
+          title,
+          description,
+          downloadUrl,
+          images: images || [],
+          isActive: isActive !== undefined ? isActive : true,
+          updatedAt: new Date(),
+        })
+        .where(eq(tools.id, toolId))
+        .returning();
+
+      if (!updatedTool) {
+        return res.status(404).json({ message: "Tool not found" });
+      }
+
+      res.json(updatedTool);
+    } catch (error) {
+      console.error("Error updating tool:", error);
+      res.status(500).json({ message: "Failed to update tool" });
+    }
+  });
+
+  app.delete("/api/admin/tools/:id", isAdmin, async (req, res) => {
+    try {
+      const { tools } = await import("@db/schema");
+      const toolId = parseInt(req.params.id);
+
+      const [deletedTool] = await db
+        .delete(tools)
+        .where(eq(tools.id, toolId))
+        .returning();
+
+      if (!deletedTool) {
+        return res.status(404).json({ message: "Tool not found" });
+      }
+
+      res.json({ message: "Tool deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting tool:", error);
+      res.status(500).json({ message: "Failed to delete tool" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
