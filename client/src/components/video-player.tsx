@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Play, Pause, Square, Circle } from "lucide-react";
-import RecordRTC from "recordrtc";
 
 interface VideoPlayerProps {
   url?: string | null;
@@ -16,8 +15,9 @@ export default function VideoPlayer({
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const previewVideoRef = useRef<HTMLVideoElement>(null);
-  const recorderRef = useRef<RecordRTC | null>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const recordedChunksRef = useRef<Blob[]>([]);
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
@@ -34,8 +34,8 @@ export default function VideoPlayer({
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop());
       }
-      if (recorderRef.current) {
-        recorderRef.current.destroy();
+      if (recorderRef.current && recorderRef.current.state !== 'inactive') {
+        recorderRef.current.stop();
       }
     };
   }, [isRecordingEnabled]);
@@ -163,24 +163,77 @@ export default function VideoPlayer({
         readyState: t.readyState 
       })));
 
-      // Create RecordRTC instance with optimized settings
-      const recorder = new RecordRTC(streamRef.current, {
-        type: "video",
-        mimeType: "video/webm;codecs=vp8,opus",
-        recorderType: RecordRTC.MediaStreamRecorder,
-        disableLogs: false,
-        videoBitsPerSecond: 256000,
-        audioBitsPerSecond: 64000,
-        timeSlice: 1000, // Generate data every second
-        checkForInactiveTracks: true,
-        bufferSize: 16384,
+      // Reset recorded chunks
+      recordedChunksRef.current = [];
+
+      // Determine the best supported MIME type
+      const mimeTypes = [
+        'video/webm;codecs=vp9,opus',
+        'video/webm;codecs=vp8,opus',
+        'video/webm',
+        'video/mp4',
+      ];
+
+      let selectedMimeType = '';
+      for (const mimeType of mimeTypes) {
+        if (MediaRecorder.isTypeSupported(mimeType)) {
+          selectedMimeType = mimeType;
+          console.log('Using MIME type:', mimeType);
+          break;
+        }
+      }
+
+      if (!selectedMimeType) {
+        throw new Error('No supported video MIME type found');
+      }
+
+      // Create MediaRecorder
+      const recorder = new MediaRecorder(streamRef.current, {
+        mimeType: selectedMimeType,
+        videoBitsPerSecond: 1000000, // 1Mbps
+        audioBitsPerSecond: 128000,  // 128kbps
       });
+
+      // Handle data available
+      recorder.ondataavailable = (event) => {
+        console.log('Data available:', event.data.size, 'bytes');
+        if (event.data.size > 0) {
+          recordedChunksRef.current.push(event.data);
+        }
+      };
+
+      // Handle recording stop
+      recorder.onstop = () => {
+        console.log('Recording stopped, chunks:', recordedChunksRef.current.length);
+        
+        if (recordedChunksRef.current.length === 0) {
+          setError("No data was recorded. Please try again.");
+          return;
+        }
+
+        const blob = new Blob(recordedChunksRef.current, { type: selectedMimeType });
+        console.log('Final blob:', { size: blob.size, type: blob.type });
+        
+        if (blob.size === 0) {
+          setError("Recording failed - empty file. Please try again.");
+          return;
+        }
+
+        uploadVideo(blob);
+      };
+
+      // Handle errors
+      recorder.onerror = (event) => {
+        console.error('Recording error:', event);
+        setError('Recording failed due to an error. Please try again.');
+      };
 
       recorderRef.current = recorder;
 
-      console.log("Starting RecordRTC recording...");
-      recorder.startRecording();
+      console.log("Starting MediaRecorder recording...");
+      recorder.start(1000); // Collect data every second
       setIsRecording(true);
+
     } catch (error) {
       console.error("Error starting recording:", error);
       setError(
@@ -192,40 +245,10 @@ export default function VideoPlayer({
   };
 
   const stopRecording = () => {
-    if (recorderRef.current && isRecording) {
-      console.log("Stopping RecordRTC recording...");
+    if (recorderRef.current && isRecording && recorderRef.current.state !== 'inactive') {
+      console.log("Stopping MediaRecorder recording...");
       setIsRecording(false);
-
-      recorderRef.current.stopRecording(async () => {
-        // Wait longer for the recording to finalize
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-
-        const blob = recorderRef.current?.getBlob();
-
-        console.log("Recording stopped. Blob details:", {
-          size: blob?.size || 0,
-          type: blob?.type || "unknown",
-          lastModified: blob instanceof File ? blob.lastModified : "N/A",
-        });
-
-        // Validate the recording
-        if (!blob) {
-          setError("Recording failed - no blob created. Please try again.");
-          return;
-        }
-
-        if (blob.size === 0) {
-          setError("Recording failed - empty file. This might be a browser compatibility issue. Try refreshing and recording again.");
-          return;
-        }
-
-        if (blob.size < 1000) { // Less than 1KB is suspicious
-          console.warn("Very small recording detected:", blob.size, "bytes");
-        }
-
-        // Upload the video
-        uploadVideo(blob);
-      });
+      recorderRef.current.stop();
     }
   };
 
