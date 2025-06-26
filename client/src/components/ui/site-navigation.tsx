@@ -24,7 +24,7 @@ export function SiteNavigation() {
     { id: "how-to-use", label: "How to Use", path: "/how-to-use" },
     { id: "resources", label: "Resources", path: "/resources" },
     { id: "tools", label: "Tools", path: "/tools" },
-    { id: "contact", label: "Contact", path: "/contact" }
+    { id: "contact", label: "Contact", path: "/contact-us" }
   ];
 
   // User account menu items - only shown when logged in
