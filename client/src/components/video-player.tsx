@@ -2,6 +2,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Play, Pause, Square, Circle } from "lucide-react";
+import RecordRTC from "recordrtc";
 
 interface VideoPlayerProps {
   url?: string | null;
@@ -16,9 +17,8 @@ export default function VideoPlayer({
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const previewVideoRef = useRef<HTMLVideoElement>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recorderRef = useRef<RecordRTC | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
   
   const [isPlaying, setIsPlaying] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
@@ -34,6 +34,9 @@ export default function VideoPlayer({
     return () => {
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop());
+      }
+      if (recorderRef.current) {
+        recorderRef.current.destroy();
       }
     };
   }, [isRecordingEnabled]);
@@ -69,7 +72,6 @@ export default function VideoPlayer({
   const startRecording = async () => {
     try {
       setError(null);
-      chunksRef.current = [];
 
       if (!streamRef.current) {
         await initializeCamera();
@@ -79,90 +81,29 @@ export default function VideoPlayer({
         }
       }
 
-      // Find the best supported MIME type
-      const mimeTypes = [
-        'video/webm;codecs=vp9,opus',
-        'video/webm;codecs=vp8,opus',
-        'video/webm;codecs=h264,opus',
-        'video/webm',
-        'video/mp4'
-      ];
-
-      let selectedMimeType = '';
-      for (const mimeType of mimeTypes) {
-        if (MediaRecorder.isTypeSupported(mimeType)) {
-          selectedMimeType = mimeType;
-          break;
+      // Create RecordRTC instance
+      const recorder = new RecordRTC(streamRef.current, {
+        type: 'video',
+        mimeType: 'video/webm',
+        recorderType: RecordRTC.MediaStreamRecorder,
+        video: {
+          width: 1280,
+          height: 720
+        },
+        audio: {
+          sampleRate: 44100,
+          channelCount: 2
+        },
+        timeSlice: 1000,
+        ondataavailable: (blob: Blob) => {
+          console.log('Data available:', blob.size, 'bytes');
         }
-      }
-
-      if (!selectedMimeType) {
-        setError('Your browser does not support video recording.');
-        return;
-      }
-
-      const mediaRecorder = new MediaRecorder(streamRef.current, {
-        mimeType: selectedMimeType,
-        videoBitsPerSecond: 2500000, // 2.5 Mbps
-        audioBitsPerSecond: 128000   // 128 kbps
       });
 
-      mediaRecorderRef.current = mediaRecorder;
+      recorderRef.current = recorder;
 
-      mediaRecorder.ondataavailable = (event) => {
-        console.log('Data available:', event.data.size, 'bytes');
-        if (event.data && event.data.size > 0) {
-          chunksRef.current.push(event.data);
-        }
-      };
-
-      mediaRecorder.onstop = async () => {
-        console.log('Recording stopped. Chunks:', chunksRef.current.length);
-        
-        if (chunksRef.current.length === 0) {
-          setError('No video data was recorded. Please try again.');
-          return;
-        }
-
-        const blob = new Blob(chunksRef.current, { type: selectedMimeType });
-        console.log('Final blob:', blob.size, 'bytes, type:', blob.type);
-
-        if (blob.size === 0) {
-          setError('Recording failed - no data captured. Please try again.');
-          return;
-        }
-
-        // Upload the video
-        try {
-          const formData = new FormData();
-          formData.append('video', blob, 'recording.webm');
-
-          const response = await fetch('/api/upload-video', {
-            method: 'POST',
-            body: formData,
-          });
-
-          if (response.ok) {
-            const { videoUrl } = await response.json();
-            onRecordingComplete?.(blob, videoUrl);
-          } else {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.message || `Upload failed with status: ${response.status}`);
-          }
-        } catch (error) {
-          console.error('Error uploading video:', error);
-          setError(`Failed to upload video: ${error instanceof Error ? error.message : 'Please try again.'}`);
-          onRecordingComplete?.(blob);
-        }
-      };
-
-      mediaRecorder.onerror = (event) => {
-        console.error('MediaRecorder error:', event);
-        setError('Recording error occurred. Please try again.');
-      };
-
-      console.log('Starting recording with MIME type:', selectedMimeType);
-      mediaRecorder.start(1000); // Collect data every second
+      console.log('Starting RecordRTC recording...');
+      recorder.startRecording();
       setIsRecording(true);
       
     } catch (error) {
@@ -172,10 +113,51 @@ export default function VideoPlayer({
   };
 
   const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      console.log('Stopping recording...');
-      mediaRecorderRef.current.stop();
+    if (recorderRef.current && isRecording) {
+      console.log('Stopping RecordRTC recording...');
+      
+      recorderRef.current.stopRecording(() => {
+        const blob = recorderRef.current?.getBlob();
+        
+        if (!blob || blob.size === 0) {
+          setError('Recording failed - no data captured. Please try again.');
+          return;
+        }
+
+        console.log('Recording stopped. Blob size:', blob.size, 'bytes');
+
+        // Upload the video
+        uploadVideo(blob);
+      });
+      
       setIsRecording(false);
+    }
+  };
+
+  const uploadVideo = async (blob: Blob) => {
+    try {
+      const formData = new FormData();
+      formData.append('video', blob, 'recording.webm');
+
+      console.log('Uploading video file. Size:', blob.size, 'bytes');
+
+      const response = await fetch('/api/upload-video', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (response.ok) {
+        const { videoUrl } = await response.json();
+        console.log('Video uploaded successfully:', videoUrl);
+        onRecordingComplete?.(blob, videoUrl);
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `Upload failed with status: ${response.status}`);
+      }
+    } catch (error) {
+      console.error('Error uploading video:', error);
+      setError(`Failed to upload video: ${error instanceof Error ? error.message : 'Please try again.'}`);
+      onRecordingComplete?.(blob);
     }
   };
 
