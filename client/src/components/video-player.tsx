@@ -50,54 +50,39 @@ export default function VideoPlayer({
         await videoRef.current.play();
       }
 
-      // Simplified MediaRecorder setup - let the browser choose the best format
-      let mediaRecorder;
-      let mimeType = '';
-      
-      // Try different approaches for maximum compatibility
-      try {
-        // Try with no options first (most compatible)
-        mediaRecorder = new MediaRecorder(stream);
-        mimeType = 'video/webm'; // Default assumption
-        console.log('MediaRecorder created with default settings');
-      } catch (error) {
-        console.error('Failed to create MediaRecorder with default settings:', error);
-        throw new Error('MediaRecorder not supported by this browser');
-      }
-      mediaRecorderRef.current = mediaRecorder;
+      // Create MediaRecorder with explicit options for better compatibility
+      const options = {
+        mimeType: 'video/webm;codecs=vp8,opus'
+      };
 
-      const chunks: Blob[] = [];
-      
+      // Try different MIME types for compatibility
+      let mediaRecorder;
+      if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) {
+        mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8,opus' });
+      } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8')) {
+        mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8' });
+      } else if (MediaRecorder.isTypeSupported('video/webm')) {
+        mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+      } else if (MediaRecorder.isTypeSupported('video/mp4')) {
+        mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/mp4' });
+      } else {
+        // Fallback to default
+        mediaRecorder = new MediaRecorder(stream);
+      }
+
+      mediaRecorderRef.current = mediaRecorder;
+      const recordedChunks: Blob[] = [];
+
       mediaRecorder.ondataavailable = (event) => {
-        console.log('Data available event triggered');
-        console.log('Event data details:', {
-          hasData: !!event.data,
-          size: event.data?.size || 0,
-          type: event.data?.type || 'unknown',
-          constructor: event.data?.constructor?.name
-        });
-        
-        // Accept any data, even if size is reported as 0 (some browsers report incorrectly)
-        if (event.data) {
-          chunks.push(event.data);
-          console.log('Data chunk added. Total chunks:', chunks.length);
-          console.log('Chunk details:', {
-            index: chunks.length - 1,
-            size: event.data.size,
-            type: event.data.type
-          });
-        } else {
-          console.warn('No data in dataavailable event');
+        console.log('Data available event:', event.data.size, 'bytes');
+        if (event.data && event.data.size > 0) {
+          recordedChunks.push(event.data);
+          console.log('Added chunk, total chunks:', recordedChunks.length);
         }
       };
 
       mediaRecorder.onstart = () => {
-        console.log('MediaRecorder started successfully, state:', mediaRecorder.state);
-        console.log('Stream tracks:', stream.getTracks().map(track => ({
-          kind: track.kind,
-          enabled: track.enabled,
-          readyState: track.readyState
-        })));
+        console.log('Recording started');
       };
 
       mediaRecorder.onerror = (event) => {
@@ -106,35 +91,18 @@ export default function VideoPlayer({
       };
 
       mediaRecorder.onstop = async () => {
-        console.log('MediaRecorder stopped, total chunks collected:', chunks.length);
-        console.log('Chunks details:', chunks.map((chunk, i) => ({
-          index: i,
-          size: chunk.size,
-          type: chunk.type
-        })));
+        console.log('Recording stopped, chunks:', recordedChunks.length);
         
-        // Give time for any final data events
-        await new Promise(resolve => setTimeout(resolve, 200));
-        
-        if (chunks.length === 0) {
-          console.error('No chunks collected during recording');
-          setError('No video data was recorded. This might be a browser compatibility issue. Please try refreshing the page.');
+        if (recordedChunks.length === 0) {
+          setError('No video data was recorded. Please try again.');
           return;
         }
 
-        // Create blob with detected MIME type from first chunk or fallback
-        const detectedType = chunks[0]?.type || mimeType || 'video/webm';
-        const blob = new Blob(chunks, { type: detectedType });
-        console.log('Final blob created - size:', blob.size, 'bytes', 'type:', blob.type);
-        console.log('Using detected type:', detectedType);
+        const blob = new Blob(recordedChunks, { 
+          type: mediaRecorder.mimeType || 'video/webm' 
+        });
         
-        // Some browsers might report size as 0 even with valid data, so also check chunks
-        if (blob.size === 0 && chunks.every(chunk => chunk.size === 0)) {
-          console.error('All chunks are empty');
-          setError('Recording failed to capture video data. This might be a browser issue. Try refreshing and recording again.');
-          return;
-        }
-        
+        console.log('Final blob size:', blob.size, 'bytes');
         setRecordedChunks([blob]);
 
         // Upload the video to the server
@@ -171,26 +139,11 @@ export default function VideoPlayer({
         }
       };
 
-      // Start recording with a 1-second timeslice to ensure data collection
-      console.log('Starting MediaRecorder');
-      console.log('MediaRecorder state before start:', mediaRecorder.state);
-      console.log('Stream active tracks:', stream.getVideoTracks().length, 'video,', stream.getAudioTracks().length, 'audio');
-      
-      mediaRecorder.start(1000); // 1-second intervals
+      // Start recording - use timeslice for regular data collection
+      mediaRecorder.start(250); // More frequent data collection
       setIsRecording(true);
       
-      // Set up interval to request data every few seconds
-      const dataRequestInterval = setInterval(() => {
-        if (mediaRecorder && mediaRecorder.state === 'recording') {
-          console.log('Requesting data via interval');
-          mediaRecorder.requestData();
-        } else {
-          clearInterval(dataRequestInterval);
-        }
-      }, 2000);
-      
-      // Store interval reference for cleanup
-      (mediaRecorder as any).dataRequestInterval = dataRequestInterval;
+      console.log('Recording started with MIME type:', mediaRecorder.mimeType);
     } catch (error) {
       console.error("Error starting recording:", error);
 
@@ -222,26 +175,8 @@ export default function VideoPlayer({
 
   const stopRecording = () => {
     if (mediaRecorderRef.current && isRecording) {
-      console.log('Stopping MediaRecorder, current state:', mediaRecorderRef.current.state);
-      
-      // Clear any intervals
-      if ((mediaRecorderRef.current as any).dataRequestInterval) {
-        clearInterval((mediaRecorderRef.current as any).dataRequestInterval);
-      }
-      
-      // Request final data and stop
-      if (mediaRecorderRef.current.state === 'recording') {
-        console.log('Requesting final data before stop');
-        mediaRecorderRef.current.requestData();
-        
-        setTimeout(() => {
-          if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-            console.log('Stopping MediaRecorder');
-            mediaRecorderRef.current.stop();
-          }
-        }, 500);
-      }
-      
+      console.log('Stopping recording...');
+      mediaRecorderRef.current.stop();
       setIsRecording(false);
     }
   };
