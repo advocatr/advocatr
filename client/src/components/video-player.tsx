@@ -50,14 +50,17 @@ export default function VideoPlayer({
         await videoRef.current.play();
       }
 
-      // Check MediaRecorder support and find best codec
-      let mimeType = 'video/webm;codecs=vp9';
+      // Check MediaRecorder support and find best codec that supports both video and audio
+      let mimeType = 'video/webm;codecs=vp9,opus';
       if (!MediaRecorder.isTypeSupported(mimeType)) {
-        mimeType = 'video/webm;codecs=vp8';
+        mimeType = 'video/webm;codecs=vp8,opus';
         if (!MediaRecorder.isTypeSupported(mimeType)) {
-          mimeType = 'video/webm';
+          mimeType = 'video/webm;codecs=h264,opus';
           if (!MediaRecorder.isTypeSupported(mimeType)) {
-            mimeType = 'video/mp4';
+            mimeType = 'video/webm';
+            if (!MediaRecorder.isTypeSupported(mimeType)) {
+              mimeType = 'video/mp4';
+            }
           }
         }
       }
