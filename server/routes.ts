@@ -11,7 +11,9 @@ import { sendContactEmail } from "./email"; // Added import
 import { Client } from "@replit/object-storage";
 
 const randomBytesAsync = promisify(randomBytes);
-const objectStorage = new Client();
+const objectStorage = new Client({
+  bucketId: "replit-objstore-416e6fe5-4969-41e5-8291-f6fcbca88b84"
+});
 
 async function generateResetToken(userId: number) {
   const token = (await randomBytesAsync(32)).toString('hex');
