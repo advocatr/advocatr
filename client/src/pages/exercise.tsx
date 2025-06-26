@@ -135,13 +135,20 @@ export default function Exercise() {
             {exercise.pdfUrl && (
               <div className="mt-4">
                 <Button
-                  onClick={() => setShowPdf(!showPdf)}
+                  onClick={() => {
+                    // If it's a Google Drive link, open in new tab
+                    if (exercise.pdfUrl.includes('drive.google.com')) {
+                      window.open(exercise.pdfUrl, '_blank');
+                    } else {
+                      setShowPdf(!showPdf);
+                    }
+                  }}
                   className="mb-4"
                 >
                   <FileText className="mr-2 h-4 w-4" />
-                  {showPdf ? 'Hide Materials' : 'View Materials'}
+                  View Materials
                 </Button>
-                {showPdf && (
+                {showPdf && !exercise.pdfUrl.includes('drive.google.com') && (
                   <div className="w-full h-[500px] border rounded-lg overflow-hidden">
                     <iframe
                       src={`/pdfs/${exercise.pdfUrl.split('/').pop()}`}
