@@ -518,35 +518,11 @@ export function registerRoutes(app: Express): Server {
 
     try {
       const filename = decodeURIComponent(req.params.filename);
-      console.log("Requesting video file:", filename);
-      
       const videoData = await objectStorage.downloadAsBytes(filename);
-      console.log("Downloaded video data type:", typeof videoData, "structure:", videoData);
-      
-      // Handle Replit object storage response format
-      let buffer: Buffer;
-      if (videoData && typeof videoData === 'object' && 'value' in videoData) {
-        // Replit object storage returns { ok: true, value: [Buffer] }
-        const bufferArray = videoData.value;
-        if (Array.isArray(bufferArray) && bufferArray.length > 0) {
-          buffer = bufferArray[0]; // Get the first buffer from the array
-        } else {
-          throw new Error("No buffer data in object storage response");
-        }
-      } else if (Buffer.isBuffer(videoData)) {
-        buffer = videoData;
-      } else if (videoData instanceof Uint8Array) {
-        buffer = Buffer.from(videoData);
-      } else if (Array.isArray(videoData)) {
-        buffer = Buffer.from(videoData);
-      } else {
-        console.error("Unexpected video data type:", typeof videoData, videoData);
-        throw new Error("Invalid video data format");
-      }
+      const buffer = Buffer.from(videoData);
       
       res.setHeader('Content-Type', 'video/webm');
       res.setHeader('Content-Length', buffer.length.toString());
-      res.setHeader('Accept-Ranges', 'bytes');
       res.send(buffer);
     } catch (error) {
       console.error("Error serving video:", error);

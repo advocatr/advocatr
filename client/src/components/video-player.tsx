@@ -24,8 +24,7 @@ export default function VideoPlayer({
   const startRecording = async () => {
     try {
       setError(null);
-      console.log('Starting recording process...');
-
+      
       // Check if getUserMedia is available
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         throw new Error("Your browser doesn't support camera/microphone access. Please use a modern browser like Chrome, Firefox, or Safari.");
@@ -44,7 +43,6 @@ export default function VideoPlayer({
         audio: true,
       });
 
-      console.log('Stream obtained:', stream.getTracks().map(t => ({ kind: t.kind, enabled: t.enabled })));
       streamRef.current = stream;
 
       if (videoRef.current) {
@@ -52,105 +50,57 @@ export default function VideoPlayer({
         await videoRef.current.play();
       }
 
-      // Determine the best supported MIME type
-      let mimeType = '';
-      const possibleTypes = [
-        'video/webm;codecs=vp9,opus',
-        'video/webm;codecs=vp8,opus', 
-        'video/webm;codecs=h264,opus',
-        'video/webm;codecs=vp9',
-        'video/webm;codecs=vp8',
-        'video/webm',
-        'video/mp4;codecs=h264,aac',
-        'video/mp4'
-      ];
-
-      for (const type of possibleTypes) {
-        if (MediaRecorder.isTypeSupported(type)) {
-          mimeType = type;
-          console.log('Selected MIME type:', mimeType);
-          break;
+      // Check MediaRecorder support and find best codec that supports both video and audio
+      let mimeType = 'video/webm;codecs=vp9,opus';
+      if (!MediaRecorder.isTypeSupported(mimeType)) {
+        mimeType = 'video/webm;codecs=vp8,opus';
+        if (!MediaRecorder.isTypeSupported(mimeType)) {
+          mimeType = 'video/webm;codecs=h264,opus';
+          if (!MediaRecorder.isTypeSupported(mimeType)) {
+            mimeType = 'video/webm';
+            if (!MediaRecorder.isTypeSupported(mimeType)) {
+              mimeType = 'video/mp4';
+            }
+          }
         }
       }
 
-      if (!mimeType) {
-        console.log('No specific MIME type supported, using default');
-      }
-
-      // Create MediaRecorder with options
-      const options: MediaRecorderOptions = {};
-      if (mimeType) {
-        options.mimeType = mimeType;
-      }
-      
-      const mediaRecorder = new MediaRecorder(stream, options);
+      const mediaRecorder = new MediaRecorder(stream, {
+        mimeType: mimeType
+      });
       mediaRecorderRef.current = mediaRecorder;
-      
-      console.log('MediaRecorder created with MIME type:', mediaRecorder.mimeType);
 
-      // Array to store chunks - using closure to ensure proper reference
-      let recordedChunks: Blob[] = [];
-
+      const chunks: Blob[] = [];
       mediaRecorder.ondataavailable = (event) => {
-        console.log('Data available event - size:', event.data.size, 'type:', event.data.type);
-        if (event.data && event.data.size > 0) {
-          recordedChunks.push(event.data);
-          console.log('Chunk added. Total chunks:', recordedChunks.length, 'Total size so far:', recordedChunks.reduce((sum, chunk) => sum + chunk.size, 0));
-        } else {
-          console.warn('Empty or invalid data chunk received');
+        if (event.data.size > 0) {
+          chunks.push(event.data);
+          console.log('Data chunk received:', event.data.size, 'bytes');
         }
-      };
-
-      mediaRecorder.onstart = () => {
-        console.log('MediaRecorder started successfully. State:', mediaRecorder.state);
-        recordedChunks = []; // Reset chunks array
-      };
-
-      mediaRecorder.onerror = (event) => {
-        console.error('MediaRecorder error:', event);
-        setError('Recording error occurred. Please try again.');
       };
 
       mediaRecorder.onstop = async () => {
-        console.log('MediaRecorder stopped. State:', mediaRecorder.state);
-        console.log('Final chunks count:', recordedChunks.length);
-        console.log('Chunk sizes:', recordedChunks.map(chunk => chunk.size));
-        
-        if (recordedChunks.length === 0) {
+        console.log('MediaRecorder stopped, total chunks:', chunks.length);
+        if (chunks.length === 0) {
           setError('No video data was recorded. Please try again.');
           return;
         }
-
-        const totalSize = recordedChunks.reduce((sum, chunk) => sum + chunk.size, 0);
-        console.log('Total recorded data size:', totalSize, 'bytes');
-
-        if (totalSize === 0) {
-          setError('Recording produced no data. Please try again.');
-          return;
-        }
-
-        const blob = new Blob(recordedChunks, { 
-          type: mediaRecorder.mimeType || mimeType || 'video/webm' 
-        });
         
-        console.log('Final blob created - size:', blob.size, 'type:', blob.type);
+        const blob = new Blob(chunks, { type: "video/webm" });
+        console.log('Final blob size:', blob.size, 'bytes');
         setRecordedChunks([blob]);
-
+        
         // Upload the video to the server
         try {
           const formData = new FormData();
           formData.append('video', blob, 'recording.webm');
-
-          console.log('Uploading video blob of size:', blob.size);
-
+          
           const response = await fetch('/api/upload-video', {
             method: 'POST',
             body: formData,
           });
-
+          
           if (response.ok) {
             const { videoUrl } = await response.json();
-            console.log('Upload successful, video URL:', videoUrl);
             onRecordingComplete?.(blob, videoUrl);
           } else {
             const errorData = await response.json().catch(() => ({}));
@@ -173,24 +123,13 @@ export default function VideoPlayer({
         }
       };
 
-      // Start recording with timeslice to ensure regular data collection
-      console.log('Starting MediaRecorder...');
-      mediaRecorder.start(1000); // Request data every second
+      // Request data every 1000ms to ensure we capture data
+      mediaRecorder.start(1000);
       setIsRecording(true);
-      
-      // Verify recording state after a short delay
-      setTimeout(() => {
-        console.log('MediaRecorder state after start:', mediaRecorder.state);
-        if (mediaRecorder.state !== 'recording') {
-          console.error('MediaRecorder failed to start recording');
-          setError('Failed to start recording. Please try again.');
-          setIsRecording(false);
-        }
-      }, 100);
-      
+      console.log('MediaRecorder started with format:', mimeType);
     } catch (error) {
       console.error("Error starting recording:", error);
-
+      
       if (error instanceof DOMException) {
         switch (error.name) {
           case 'NotFoundError':
@@ -219,20 +158,7 @@ export default function VideoPlayer({
 
   const stopRecording = () => {
     if (mediaRecorderRef.current && isRecording) {
-      console.log('Stopping recording... Current state:', mediaRecorderRef.current.state);
-      
-      if (mediaRecorderRef.current.state === 'recording') {
-        // Request any pending data before stopping
-        mediaRecorderRef.current.requestData();
-        
-        // Small delay to ensure data is captured
-        setTimeout(() => {
-          if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-            mediaRecorderRef.current.stop();
-          }
-        }, 100);
-      }
-      
+      mediaRecorderRef.current.stop();
       setIsRecording(false);
     }
   };
