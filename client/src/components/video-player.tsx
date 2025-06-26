@@ -95,11 +95,12 @@ export default function VideoPlayer({
             const { videoUrl } = await response.json();
             onRecordingComplete?.(blob, videoUrl);
           } else {
-            throw new Error('Upload failed');
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.message || `Upload failed with status: ${response.status}`);
           }
         } catch (error) {
           console.error('Error uploading video:', error);
-          setError('Failed to upload video. Please try again.');
+          setError(`Failed to upload video: ${error instanceof Error ? error.message : 'Please try again.'}`);
           onRecordingComplete?.(blob);
         }
 

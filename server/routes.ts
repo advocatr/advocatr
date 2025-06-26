@@ -469,29 +469,44 @@ export function registerRoutes(app: Express): Server {
   // Upload video endpoint
   app.post("/api/upload-video", async (req, res) => {
     if (!req.isAuthenticated()) {
-      return res.status(401).send("Not authenticated");
+      return res.status(401).json({ message: "Not authenticated" });
     }
 
     try {
+      console.log("Upload request received, files:", req.files ? Object.keys(req.files) : 'none');
+      
       const videoFile = req.files?.video;
       if (!videoFile || Array.isArray(videoFile)) {
+        console.log("No video file in request:", { files: req.files });
         return res.status(400).json({ message: "No video file provided" });
       }
+
+      console.log("Video file details:", { 
+        name: videoFile.name, 
+        size: videoFile.data.length, 
+        mimetype: videoFile.mimetype 
+      });
 
       // Generate unique filename
       const timestamp = Date.now();
       const filename = `videos/${req.user.id}_${timestamp}.webm`;
 
+      console.log("Uploading to object storage:", filename);
+      
       // Upload to object storage
       await objectStorage.uploadFromBytes(filename, videoFile.data);
 
       // Generate a URL for the uploaded video
       const videoUrl = `/api/video/${encodeURIComponent(filename)}`;
 
+      console.log("Upload successful:", videoUrl);
       res.json({ videoUrl });
     } catch (error) {
       console.error("Error uploading video:", error);
-      res.status(500).json({ message: "Failed to upload video" });
+      res.status(500).json({ 
+        message: "Failed to upload video", 
+        error: error instanceof Error ? error.message : "Unknown error" 
+      });
     }
   });
 
