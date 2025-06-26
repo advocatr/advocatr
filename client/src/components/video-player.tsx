@@ -5,7 +5,7 @@ import { Play, Pause, Square, Circle } from "lucide-react";
 interface VideoPlayerProps {
   url?: string | null;
   isRecordingEnabled?: boolean;
-  onRecordingComplete?: (blob: Blob) => void;
+  onRecordingComplete?: (blob: Blob, videoUrl?: string) => void;
 }
 
 export default function VideoPlayer({
@@ -74,10 +74,31 @@ export default function VideoPlayer({
         }
       };
 
-      mediaRecorder.onstop = () => {
+      mediaRecorder.onstop = async () => {
         const blob = new Blob(chunks, { type: "video/webm" });
         setRecordedChunks([blob]);
-        onRecordingComplete?.(blob);
+        
+        // Upload the video to the server
+        try {
+          const formData = new FormData();
+          formData.append('video', blob, 'recording.webm');
+          
+          const response = await fetch('/api/upload-video', {
+            method: 'POST',
+            body: formData,
+          });
+          
+          if (response.ok) {
+            const { videoUrl } = await response.json();
+            onRecordingComplete?.(blob, videoUrl);
+          } else {
+            throw new Error('Upload failed');
+          }
+        } catch (error) {
+          console.error('Error uploading video:', error);
+          setError('Failed to upload video. Please try again.');
+          onRecordingComplete?.(blob);
+        }
 
         // Stop all tracks
         if (streamRef.current) {

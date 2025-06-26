@@ -168,11 +168,11 @@ export default function Exercise() {
             <VideoPlayer 
               url={progress?.videoUrl} 
               isRecordingEnabled={!progress?.videoUrl}
-              onRecordingComplete={(blob) => {
-                const file = new File([blob], 'recording.webm', { type: 'video/webm' });
-                const formData = new FormData();
-                formData.append('video', file);
-                mutation.mutate(formData);
+              onRecordingComplete={(blob, videoUrl) => {
+                if (videoUrl) {
+                  // Update progress with the server video URL
+                  updateProgressMutation.mutate({ videoUrl, completed: true });
+                }
               }}
             />
           </div>

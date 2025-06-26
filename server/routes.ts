@@ -8,9 +8,10 @@ import { randomBytes } from "crypto";
 import { promisify } from "util";
 import * as crypto from 'crypto';
 import { sendContactEmail } from "./email"; // Added import
-
+import { Client } from "@replit/object-storage";
 
 const randomBytesAsync = promisify(randomBytes);
+const objectStorage = new Client();
 
 async function generateResetToken(userId: number) {
   const token = (await randomBytesAsync(32)).toString('hex');
@@ -460,6 +461,54 @@ export function registerRoutes(app: Express): Server {
     } catch (error) {
       console.error("Error sending contact email:", error);
       res.status(500).json({ message: "Failed to send message" });
+    }
+  });
+
+  // Upload video endpoint
+  app.post("/api/upload-video", async (req, res) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).send("Not authenticated");
+    }
+
+    try {
+      const videoFile = req.files?.video;
+      if (!videoFile || Array.isArray(videoFile)) {
+        return res.status(400).json({ message: "No video file provided" });
+      }
+
+      // Generate unique filename
+      const timestamp = Date.now();
+      const filename = `videos/${req.user.id}_${timestamp}.webm`;
+
+      // Upload to object storage
+      await objectStorage.uploadFromBytes(filename, videoFile.data);
+
+      // Generate a URL for the uploaded video
+      const videoUrl = `/api/video/${encodeURIComponent(filename)}`;
+
+      res.json({ videoUrl });
+    } catch (error) {
+      console.error("Error uploading video:", error);
+      res.status(500).json({ message: "Failed to upload video" });
+    }
+  });
+
+  // Serve video files
+  app.get("/api/video/:filename", async (req, res) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).send("Not authenticated");
+    }
+
+    try {
+      const filename = decodeURIComponent(req.params.filename);
+      const videoData = await objectStorage.downloadAsBytes(filename);
+      
+      res.setHeader('Content-Type', 'video/webm');
+      res.setHeader('Content-Length', videoData.length);
+      res.send(Buffer.from(videoData));
+    } catch (error) {
+      console.error("Error serving video:", error);
+      res.status(404).json({ message: "Video not found" });
     }
   });
 
