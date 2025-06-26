@@ -96,25 +96,32 @@ export default function VideoPlayer({
         }
       }
 
-      // Create RecordRTC instance with simplified configuration
+      // Validate stream has active tracks
+      const activeTracks = streamRef.current.getTracks().filter(t => t.readyState === 'live');
+      if (activeTracks.length === 0) {
+        setError("No active media tracks available. Please refresh and try again.");
+        return;
+      }
+
+      console.log("Active tracks for recording:", activeTracks.map(t => ({ 
+        kind: t.kind, 
+        enabled: t.enabled, 
+        readyState: t.readyState 
+      })));
+
+      // Create RecordRTC instance with MediaStreamRecorder
       const recorder = new RecordRTC(streamRef.current, {
         type: "video",
-        mimeType: "video/webm;codecs=vp8,opus",
-        ignoreMutedMedia: false, // ---- do not ignore muted videos
+        mimeType: "video/webm",
+        recorderType: RecordRTC.MediaStreamRecorder,
         disableLogs: false,
-        canvas: {
-          width: 1280,
-          height: 720,
-        },
-        frameInterval: 90, // Lower frame interval for better quality
+        videoBitsPerSecond: 128000,
+        audioBitsPerSecond: 128000,
       });
 
       recorderRef.current = recorder;
 
-      console.log(
-        "Starting RecordRTC recording with stream tracks:",
-        streamRef.current.getTracks().length,
-      );
+      console.log("Starting RecordRTC recording...");
       recorder.startRecording();
       setIsRecording(true);
     } catch (error) {
