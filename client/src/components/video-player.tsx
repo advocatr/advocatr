@@ -44,6 +44,28 @@ export default function VideoPlayer({
     try {
       setError(null);
 
+      // Check if getUserMedia is available
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error("Camera/microphone access is not supported in this browser or environment.");
+      }
+
+      // Check permissions first
+      try {
+        const permissions = await Promise.all([
+          navigator.permissions.query({ name: 'camera' as PermissionName }),
+          navigator.permissions.query({ name: 'microphone' as PermissionName })
+        ]);
+
+        console.log("Permission states:", {
+          camera: permissions[0].state,
+          microphone: permissions[1].state
+        });
+      } catch (permError) {
+        console.log("Permission check not available, proceeding with getUserMedia");
+      }
+
+      console.log("Requesting camera/microphone access...");
+
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           width: { ideal: 1280, min: 640 },
