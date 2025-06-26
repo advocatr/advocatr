@@ -66,18 +66,31 @@ export default function VideoPlayer({
 
       console.log("Requesting camera/microphone access...");
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          width: { ideal: 1280, min: 640 },
-          height: { ideal: 720, min: 480 },
-          facingMode: "user",
-        },
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          sampleRate: 44100,
-        },
-      });
+      let stream: MediaStream;
+      
+      try {
+        // Try with detailed constraints first
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            width: { ideal: 1280, min: 640 },
+            height: { ideal: 720, min: 480 },
+            facingMode: "user",
+          },
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            sampleRate: 44100,
+          },
+        });
+      } catch (detailedError) {
+        console.log("Detailed constraints failed, trying basic constraints:", detailedError);
+        
+        // Fallback to basic constraints
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: true,
+        });
+      }
 
       streamRef.current = stream;
 
@@ -150,14 +163,17 @@ export default function VideoPlayer({
         readyState: t.readyState 
       })));
 
-      // Create RecordRTC instance with MediaStreamRecorder
+      // Create RecordRTC instance with optimized settings
       const recorder = new RecordRTC(streamRef.current, {
         type: "video",
-        mimeType: "video/webm",
+        mimeType: "video/webm;codecs=vp8,opus",
         recorderType: RecordRTC.MediaStreamRecorder,
         disableLogs: false,
-        videoBitsPerSecond: 128000,
-        audioBitsPerSecond: 128000,
+        videoBitsPerSecond: 256000,
+        audioBitsPerSecond: 64000,
+        timeSlice: 1000, // Generate data every second
+        checkForInactiveTracks: true,
+        bufferSize: 16384,
       });
 
       recorderRef.current = recorder;
@@ -181,21 +197,30 @@ export default function VideoPlayer({
       setIsRecording(false);
 
       recorderRef.current.stopRecording(async () => {
-        // Wait a moment for the recording to finalize
-        await new Promise((resolve) => setTimeout(resolve, 100));
+        // Wait longer for the recording to finalize
+        await new Promise((resolve) => setTimeout(resolve, 1000));
 
         const blob = recorderRef.current?.getBlob();
 
         console.log("Recording stopped. Blob details:", {
           size: blob?.size || 0,
           type: blob?.type || "unknown",
+          lastModified: blob instanceof File ? blob.lastModified : "N/A",
         });
 
-        if (!blob || blob.size === 0) {
-          setError(
-            "Recording failed - no data captured. Please check camera permissions and try again.",
-          );
+        // Validate the recording
+        if (!blob) {
+          setError("Recording failed - no blob created. Please try again.");
           return;
+        }
+
+        if (blob.size === 0) {
+          setError("Recording failed - empty file. This might be a browser compatibility issue. Try refreshing and recording again.");
+          return;
+        }
+
+        if (blob.size < 1000) { // Less than 1KB is suspicious
+          console.warn("Very small recording detected:", blob.size, "bytes");
         }
 
         // Upload the video
