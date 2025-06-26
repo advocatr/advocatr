@@ -1,6 +1,7 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Play, Pause, Square, Circle } from "lucide-react";
+import Webcam from "react-webcam";
 
 interface VideoPlayerProps {
   url?: string | null;
@@ -14,43 +15,41 @@ export default function VideoPlayer({
   onRecordingComplete,
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const webcamRef = useRef<Webcam>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [recordedChunks, setRecordedChunks] = useState<Blob[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  const startRecording = async () => {
+  const videoConstraints = {
+    width: 1280,
+    height: 720,
+    facingMode: "user"
+  };
+
+  const handleDataAvailable = useCallback(
+    ({ data }: { data: Blob }) => {
+      if (data.size > 0) {
+        setRecordedChunks((prev) => prev.concat(data));
+      }
+    },
+    [setRecordedChunks]
+  );
+
+  const startRecording = useCallback(() => {
     try {
       setError(null);
-      
-      // Check if getUserMedia is available
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        throw new Error("Your browser doesn't support camera/microphone access. Please use a modern browser like Chrome, Firefox, or Safari.");
+      setRecordedChunks([]);
+
+      if (!webcamRef.current || !webcamRef.current.stream) {
+        setError('Camera not initialized. Please refresh the page and try again.');
+        return;
       }
 
-      // Check for HTTPS requirement
-      if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
-        throw new Error("Camera/microphone access requires HTTPS. Please access this page via HTTPS.");
-      }
+      const stream = webcamRef.current.stream;
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
-        },
-        audio: true,
-      });
-
-      streamRef.current = stream;
-
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-      }
-
-      // Check MediaRecorder support and find best codec that supports both video and audio
+      // Check MediaRecorder support and find best codec
       let mimeType = 'video/webm;codecs=vp9,opus';
       if (!MediaRecorder.isTypeSupported(mimeType)) {
         mimeType = 'video/webm;codecs=vp8,opus';
@@ -68,37 +67,32 @@ export default function VideoPlayer({
       const mediaRecorder = new MediaRecorder(stream, {
         mimeType: mimeType
       });
+
       mediaRecorderRef.current = mediaRecorder;
 
-      const chunks: Blob[] = [];
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          chunks.push(event.data);
-          console.log('Data chunk received:', event.data.size, 'bytes');
-        }
-      };
+      mediaRecorder.addEventListener("dataavailable", handleDataAvailable);
+      mediaRecorder.addEventListener("stop", async () => {
+        console.log('MediaRecorder stopped, chunks:', recordedChunks.length);
 
-      mediaRecorder.onstop = async () => {
-        console.log('MediaRecorder stopped, total chunks:', chunks.length);
-        if (chunks.length === 0) {
+        // Use the chunks from state
+        if (recordedChunks.length === 0) {
           setError('No video data was recorded. Please try again.');
           return;
         }
-        
-        const blob = new Blob(chunks, { type: "video/webm" });
+
+        const blob = new Blob(recordedChunks, { type: mimeType });
         console.log('Final blob size:', blob.size, 'bytes');
-        setRecordedChunks([blob]);
-        
+
         // Upload the video to the server
         try {
           const formData = new FormData();
           formData.append('video', blob, 'recording.webm');
-          
+
           const response = await fetch('/api/upload-video', {
             method: 'POST',
             body: formData,
           });
-          
+
           if (response.ok) {
             const { videoUrl } = await response.json();
             onRecordingComplete?.(blob, videoUrl);
@@ -111,57 +105,23 @@ export default function VideoPlayer({
           setError(`Failed to upload video: ${error instanceof Error ? error.message : 'Please try again.'}`);
           onRecordingComplete?.(blob);
         }
+      });
 
-        // Stop all tracks
-        if (streamRef.current) {
-          streamRef.current.getTracks().forEach(track => track.stop());
-        }
-
-        // Clear the video source
-        if (videoRef.current) {
-          videoRef.current.srcObject = null;
-        }
-      };
-
-      // Request data every 1000ms to ensure we capture data
-      mediaRecorder.start(1000);
+      mediaRecorder.start(100); // Request data every 100ms
       setIsRecording(true);
       console.log('MediaRecorder started with format:', mimeType);
     } catch (error) {
       console.error("Error starting recording:", error);
-      
-      if (error instanceof DOMException) {
-        switch (error.name) {
-          case 'NotFoundError':
-            setError("No camera or microphone found. Please connect a camera/microphone and try again.");
-            break;
-          case 'NotAllowedError':
-            setError("Camera/microphone access denied. Please allow permissions and refresh the page.");
-            break;
-          case 'NotReadableError':
-            setError("Camera/microphone is being used by another application. Please close other applications and try again.");
-            break;
-          case 'OverconstrainedError':
-            setError("Camera/microphone doesn't meet the requirements. Please try with a different device.");
-            break;
-          case 'SecurityError':
-            setError("Access blocked due to security restrictions. Please use HTTPS or check your browser settings.");
-            break;
-          default:
-            setError(`Camera/microphone error: ${error.message}`);
-        }
-      } else {
-        setError(error instanceof Error ? error.message : "Failed to access camera/microphone. Please check permissions and try again.");
-      }
+      setError(error instanceof Error ? error.message : "Failed to start recording. Please try again.");
     }
-  };
+  }, [webcamRef, recordedChunks, handleDataAvailable, onRecordingComplete]);
 
-  const stopRecording = () => {
+  const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop();
       setIsRecording(false);
     }
-  };
+  }, [mediaRecorderRef, isRecording]);
 
   const togglePlayback = () => {
     if (videoRef.current) {
@@ -174,15 +134,6 @@ export default function VideoPlayer({
     }
   };
 
-  useEffect(() => {
-    return () => {
-      // Cleanup
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => track.stop());
-      }
-    };
-  }, []);
-
   if (!url && !isRecordingEnabled) {
     return (
       <div className="w-full h-64 bg-gray-100 rounded-lg flex items-center justify-center">
@@ -194,15 +145,26 @@ export default function VideoPlayer({
   return (
     <div className="space-y-4">
       <div className="relative bg-black rounded-lg overflow-hidden">
-        <video
-          ref={videoRef}
-          className="w-full h-64 object-cover"
-          controls={!!url && !isRecordingEnabled}
-          autoPlay={isRecording}
-          muted={isRecording}
-          src={url || undefined}
-          playsInline
-        />
+        {isRecordingEnabled && !url ? (
+          <Webcam
+            audio={true}
+            ref={webcamRef}
+            videoConstraints={videoConstraints}
+            className="w-full h-64 object-cover"
+            onUserMediaError={(error) => {
+              console.error('Webcam error:', error);
+              setError('Failed to access camera/microphone. Please check permissions and try again.');
+            }}
+          />
+        ) : (
+          <video
+            ref={videoRef}
+            className="w-full h-64 object-cover"
+            controls={!!url && !isRecordingEnabled}
+            src={url || undefined}
+            playsInline
+          />
+        )}
       </div>
 
       {error && (
