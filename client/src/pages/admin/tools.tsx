@@ -389,7 +389,6 @@ export default function AdminToolsPage() {
             ))
           )}
         </div>
-      </div>
     </div>
   );
 }
