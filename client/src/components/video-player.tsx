@@ -100,9 +100,28 @@ export default function VideoPlayer({
       );
     } catch (error) {
       console.error("Error accessing camera:", error);
-      setError(
-        "Failed to access camera/microphone. Please check permissions and try again.",
-      );
+
+      let errorMessage = "Camera access failed. ";
+
+      if (error instanceof Error) {
+        console.log("Error details:", { name: error.name, message: error.message });
+
+        if (error.name === "NotAllowedError" || error.name === "PermissionDeniedError") {
+          errorMessage += "Please ensure camera/microphone permissions are granted in your browser settings.";
+        } else if (error.name === "NotFoundError" || error.name === "DevicesNotFoundError") {
+          errorMessage += "No camera or microphone detected on this device.";
+        } else if (error.name === "NotSupportedError") {
+          errorMessage += "This browser doesn't support camera access or requires HTTPS.";
+        } else if (error.name === "OverconstrainedError") {
+          errorMessage += "Camera settings not supported. Try refreshing the page.";
+        } else {
+          errorMessage += "Please refresh the page and try again.";
+        }
+      } else {
+        errorMessage += "Unknown error occurred. Please refresh and try again.";
+      }
+
+      setError(errorMessage);
     }
   };
 
