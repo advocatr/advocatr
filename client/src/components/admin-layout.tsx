@@ -32,6 +32,11 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
       href: "/admin/progress",
       icon: Users,
     },
+    {
+      name: "Tools",
+      href: "/admin/tools",
+      icon: LayoutGrid,
+    },
   ];
 
   return (

@@ -1,4 +1,3 @@
-
 import * as React from "react";
 import { useLocation } from "wouter";
 import { Menu, User, ChevronDown } from "lucide-react";
@@ -24,6 +23,7 @@ export function SiteNavigation() {
     { id: "about", label: "About Advocatr", path: "/about" },
     { id: "how-to-use", label: "How to Use", path: "/how-to-use" },
     { id: "resources", label: "Resources", path: "/resources" },
+    { id: "tools", label: "Tools", path: "/tools" },
     { id: "contact", label: "Contact", path: "/contact" }
   ];
 
@@ -54,7 +54,7 @@ export function SiteNavigation() {
                 {item.label}
               </Button>
             ))}
-            
+
             {user ? (
               <>
                 <div className="my-2 border-t" />

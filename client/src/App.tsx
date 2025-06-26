@@ -20,6 +20,8 @@ import ResourcesPage from "@/pages/advocacy-resources"; // Added
 import FeedbackPage from "@/pages/feedback"; // Added
 import ContactUsPage from "@/pages/contact-us"; // Added
 import TermsAndConditionsPage from "@/pages/terms-and-conditions"; // Added
+import ToolsPage from "./pages/tools"; // Added
+import AdminToolsPage from "./pages/admin/tools"; // Added
 
 function AdminRoute({
   component: Component,
@@ -56,10 +58,13 @@ function Router() {
       <Route path="/exercises" component={ExercisesPage} />
       <Route path="/resources" component={ResourcesPage} />
       <Route path="/feedback" component={FeedbackPage} />
-      <Route path="/contact" component={ContactUsPage} />
+      <Route path="/contact-us" component={ContactUsPage} />
       <Route path="/terms-and-conditions" component={TermsAndConditionsPage} />
       <Route path="/admin/exercises">
         {() => <AdminRoute component={AdminExercises} />}
+      </Route>
+      <Route path="/admin/tools">
+        {() => <AdminRoute component={AdminToolsPage} />}
       </Route>
       <Route path="/admin/progress">
         {() => <AdminRoute component={AdminProgress} />}

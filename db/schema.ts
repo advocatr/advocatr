@@ -70,6 +70,19 @@ export const passwordResetTokenRelations = relations(passwordResetTokens, ({ one
   user: one(users, { fields: [passwordResetTokens.userId], references: [users.id] }),
 }));
 
+import { varchar } from "drizzle-orm/pg-core";
+
+export const tools = pgTable("tools", {
+  id: serial("id").primaryKey(),
+  title: varchar("title", { length: 255 }).notNull(),
+  description: text("description").notNull(),
+  downloadUrl: varchar("download_url", { length: 500 }).notNull(),
+  images: text("images").array(),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 export const insertUserSchema = createInsertSchema(users);
 export const selectUserSchema = createSelectSchema(users);
 export const insertFeedbackSchema = createInsertSchema(feedback);
@@ -82,3 +95,5 @@ export type Feedback = typeof feedback.$inferSelect;
 export type NewFeedback = typeof feedback.$inferInsert;
 export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;
 export type NewPasswordResetToken = typeof passwordResetTokens.$inferInsert;
+export type Tool = typeof tools.$inferSelect;
+export type InsertTool = typeof tools.$inferInsert;
