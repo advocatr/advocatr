@@ -9,7 +9,7 @@ import Exercise from "@/pages/exercise";
 import Profile from "@/pages/profile";
 import AdminExercises from "@/pages/admin/exercises";
 import AdminProgress from "@/pages/admin/progress";
-import AdminLayout from "@/components/admin-layout";
+import { AdminLayout } from "@/components/admin-layout";
 import { useUser } from "@/hooks/use-user";
 import { Loader2 } from "lucide-react";
 import LandingPage from "@/pages/landing-page";
