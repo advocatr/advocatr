@@ -24,8 +24,22 @@ export default function VideoPlayer({
   const startRecording = async () => {
     try {
       setError(null);
+      
+      // Check if getUserMedia is available
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error("Your browser doesn't support camera/microphone access. Please use a modern browser like Chrome, Firefox, or Safari.");
+      }
+
+      // Check for HTTPS requirement
+      if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
+        throw new Error("Camera/microphone access requires HTTPS. Please access this page via HTTPS.");
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: true,
+        video: {
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        },
         audio: true,
       });
 
@@ -33,11 +47,23 @@ export default function VideoPlayer({
 
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        videoRef.current.play();
+        await videoRef.current.play();
+      }
+
+      // Check MediaRecorder support and find best codec
+      let mimeType = 'video/webm;codecs=vp9';
+      if (!MediaRecorder.isTypeSupported(mimeType)) {
+        mimeType = 'video/webm;codecs=vp8';
+        if (!MediaRecorder.isTypeSupported(mimeType)) {
+          mimeType = 'video/webm';
+          if (!MediaRecorder.isTypeSupported(mimeType)) {
+            mimeType = 'video/mp4';
+          }
+        }
       }
 
       const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: 'video/webm;codecs=vp9'
+        mimeType: mimeType
       });
       mediaRecorderRef.current = mediaRecorder;
 
@@ -68,7 +94,30 @@ export default function VideoPlayer({
       setIsRecording(true);
     } catch (error) {
       console.error("Error starting recording:", error);
-      setError("Failed to access camera/microphone. Please check permissions.");
+      
+      if (error instanceof DOMException) {
+        switch (error.name) {
+          case 'NotFoundError':
+            setError("No camera or microphone found. Please connect a camera/microphone and try again.");
+            break;
+          case 'NotAllowedError':
+            setError("Camera/microphone access denied. Please allow permissions and refresh the page.");
+            break;
+          case 'NotReadableError':
+            setError("Camera/microphone is being used by another application. Please close other applications and try again.");
+            break;
+          case 'OverconstrainedError':
+            setError("Camera/microphone doesn't meet the requirements. Please try with a different device.");
+            break;
+          case 'SecurityError':
+            setError("Access blocked due to security restrictions. Please use HTTPS or check your browser settings.");
+            break;
+          default:
+            setError(`Camera/microphone error: ${error.message}`);
+        }
+      } else {
+        setError(error instanceof Error ? error.message : "Failed to access camera/microphone. Please check permissions and try again.");
+      }
     }
   };
 
