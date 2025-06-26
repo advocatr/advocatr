@@ -43,7 +43,7 @@ export default function AdminProgress() {
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [newPassword, setNewPassword] = useState("");
 
-  const { data: progress } = useQuery({
+  const { data: progress, refetch } = useQuery({
     queryKey: ["/api/admin/progress"],
     queryFn: async () => {
       const response = await fetch("/api/admin/progress");
