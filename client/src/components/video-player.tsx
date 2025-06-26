@@ -47,11 +47,15 @@ export default function VideoPlayer({
       
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
+          width: { ideal: 1280, min: 640 },
+          height: { ideal: 720, min: 480 },
           facingMode: "user"
         },
-        audio: true
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          sampleRate: 44100
+        }
       });
       
       streamRef.current = stream;
@@ -59,10 +63,13 @@ export default function VideoPlayer({
       if (previewVideoRef.current) {
         previewVideoRef.current.srcObject = stream;
         previewVideoRef.current.muted = true; // Prevent feedback
+        await previewVideoRef.current.play();
       }
       
       setIsInitialized(true);
-      console.log('Camera initialized successfully');
+      console.log('Camera initialized successfully with tracks:', 
+        stream.getTracks().map(t => ({ kind: t.kind, enabled: t.enabled, readyState: t.readyState }))
+      );
     } catch (error) {
       console.error('Error accessing camera:', error);
       setError('Failed to access camera/microphone. Please check permissions and try again.');
@@ -81,28 +88,21 @@ export default function VideoPlayer({
         }
       }
 
-      // Create RecordRTC instance
+      // Create RecordRTC instance with simplified configuration
       const recorder = new RecordRTC(streamRef.current, {
         type: 'video',
-        mimeType: 'video/webm',
-        recorderType: RecordRTC.MediaStreamRecorder,
-        video: {
+        mimeType: 'video/webm;codecs=vp8,opus',
+        disableLogs: false,
+        canvas: {
           width: 1280,
           height: 720
         },
-        audio: {
-          sampleRate: 44100,
-          channelCount: 2
-        },
-        timeSlice: 1000,
-        ondataavailable: (blob: Blob) => {
-          console.log('Data available:', blob.size, 'bytes');
-        }
+        frameInterval: 90 // Lower frame interval for better quality
       });
 
       recorderRef.current = recorder;
 
-      console.log('Starting RecordRTC recording...');
+      console.log('Starting RecordRTC recording with stream tracks:', streamRef.current.getTracks().length);
       recorder.startRecording();
       setIsRecording(true);
       
@@ -115,22 +115,27 @@ export default function VideoPlayer({
   const stopRecording = () => {
     if (recorderRef.current && isRecording) {
       console.log('Stopping RecordRTC recording...');
+      setIsRecording(false);
       
-      recorderRef.current.stopRecording(() => {
+      recorderRef.current.stopRecording(async () => {
+        // Wait a moment for the recording to finalize
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
         const blob = recorderRef.current?.getBlob();
         
+        console.log('Recording stopped. Blob details:', {
+          size: blob?.size || 0,
+          type: blob?.type || 'unknown'
+        });
+        
         if (!blob || blob.size === 0) {
-          setError('Recording failed - no data captured. Please try again.');
+          setError('Recording failed - no data captured. Please check camera permissions and try again.');
           return;
         }
-
-        console.log('Recording stopped. Blob size:', blob.size, 'bytes');
 
         // Upload the video
         uploadVideo(blob);
       });
-      
-      setIsRecording(false);
     }
   };
 
