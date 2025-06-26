@@ -103,6 +103,31 @@ export default function Exercise() {
     }
   });
 
+  const updateProgressMutation = useMutation({
+    mutationFn: async ({ videoUrl, completed }: { videoUrl: string; completed: boolean }) => {
+      const response = await fetch(`/api/progress/${id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ videoUrl, completed }),
+      });
+
+      if (!response.ok) throw new Error("Failed to update progress");
+      return response.json();
+    },
+    onSuccess: async () => {
+      toast({ title: "Success", description: "Recording saved successfully" });
+      await refetchProgress();
+      setShowProfessionalAnswer(true);
+    },
+    onError: (error: Error) => {
+      toast({ 
+        title: "Error", 
+        description: error.message,
+        variant: "destructive"
+      });
+    }
+  });
+
   const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files?.length) return;
     const formData = new FormData();
