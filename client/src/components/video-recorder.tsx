@@ -6,7 +6,9 @@ interface VideoRecorderProps {
   onRecordingComplete?: (blob: Blob, videoUrl?: string) => void;
 }
 
-export default function VideoRecorder({ onRecordingComplete }: VideoRecorderProps) {
+export default function VideoRecorder({
+  onRecordingComplete,
+}: VideoRecorderProps) {
   const previewVideoRef = useRef<HTMLVideoElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -15,7 +17,9 @@ export default function VideoRecorder({ onRecordingComplete }: VideoRecorderProp
   const [isRecording, setIsRecording] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
-  const [recordingStatus, setRecordingStatus] = useState<'inactive' | 'recording' | 'paused'>('inactive');
+  const [recordingStatus, setRecordingStatus] = useState<
+    "inactive" | "recording" | "paused"
+  >("inactive");
 
   useEffect(() => {
     initializeMediaStream();
@@ -28,7 +32,10 @@ export default function VideoRecorder({ onRecordingComplete }: VideoRecorderProp
       streamRef.current = null;
     }
 
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+    if (
+      mediaRecorderRef.current &&
+      mediaRecorderRef.current.state !== "inactive"
+    ) {
       mediaRecorderRef.current.stop();
     }
     mediaRecorderRef.current = null;
@@ -48,13 +55,13 @@ export default function VideoRecorder({ onRecordingComplete }: VideoRecorderProp
         video: {
           width: { ideal: 1280, max: 1920 },
           height: { ideal: 720, max: 1080 },
-          frameRate: { ideal: 30 }
+          frameRate: { ideal: 30 },
         },
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
-          sampleRate: { ideal: 44100 }
-        }
+          sampleRate: { ideal: 44100 },
+        },
       });
 
       const videoTracks = stream.getVideoTracks();
@@ -86,7 +93,6 @@ export default function VideoRecorder({ onRecordingComplete }: VideoRecorderProp
 
       setIsInitialized(true);
       console.log("Media stream initialized successfully");
-
     } catch (error) {
       console.error("Failed to initialize media stream:", error);
       cleanup();
@@ -95,19 +101,20 @@ export default function VideoRecorder({ onRecordingComplete }: VideoRecorderProp
 
       if (error instanceof Error) {
         switch (error.name) {
-          case 'NotAllowedError':
-            errorMessage += "Permission denied. Please allow camera and microphone access.";
+          case "NotAllowedError":
+            errorMessage +=
+              "Permission denied. Please allow camera and microphone access.";
             break;
-          case 'NotFoundError':
+          case "NotFoundError":
             errorMessage += "No camera or microphone found.";
             break;
-          case 'NotReadableError':
+          case "NotReadableError":
             errorMessage += "Camera is already in use by another application.";
             break;
-          case 'OverconstrainedError':
+          case "OverconstrainedError":
             errorMessage += "Camera constraints could not be satisfied.";
             break;
-          case 'SecurityError':
+          case "SecurityError":
             errorMessage += "Access denied due to security restrictions.";
             break;
           default:
@@ -128,33 +135,54 @@ export default function VideoRecorder({ onRecordingComplete }: VideoRecorderProp
         throw new Error("No media stream available");
       }
 
-      if (!MediaRecorder.isTypeSupported) {
+      // Check for MediaRecorder support
+      console.log(
+        "MediaRecorder is",
+        typeof MediaRecorder !== "undefined" ? "available" : "NOT available",
+      );
+      if (!MediaRecorder || !MediaRecorder.isTypeSupported) {
         throw new Error("MediaRecorder is not supported");
       }
 
       // Clear previous recording data
       recordedChunksRef.current = [];
 
-      // Create MediaRecorder with proper mime type detection
-      let mimeType = 'video/webm;codecs=vp8,opus';
-      if (!MediaRecorder.isTypeSupported(mimeType)) {
-        mimeType = 'video/webm';
-        if (!MediaRecorder.isTypeSupported(mimeType)) {
-          mimeType = 'video/mp4';
-          if (!MediaRecorder.isTypeSupported(mimeType)) {
-            mimeType = ''; // Let browser choose
-          }
-        }
+      // Simplified MIME type logic for Firefox
+      let mimeType = "";
+      if (MediaRecorder.isTypeSupported("video/webm")) {
+        mimeType = "video/webm";
       }
-
       const options = mimeType ? { mimeType } : {};
-      const mediaRecorder = new MediaRecorder(streamRef.current, options);
+      console.log("Using MediaRecorder options:", options);
+
+      // Log before creating MediaRecorder
+      console.log("About to create MediaRecorder", streamRef.current, options);
+      let mediaRecorder;
+      try {
+        mediaRecorder = new MediaRecorder(streamRef.current, options);
+      } catch (err) {
+        console.error("Failed to create MediaRecorder:", err);
+        setError(
+          "Failed to create MediaRecorder: " +
+            (err instanceof Error ? err.message : String(err)),
+        );
+        return;
+      }
+      console.log("MediaRecorder created", mediaRecorder);
 
       mediaRecorder.ondataavailable = (event) => {
-        console.log("[ondataavailable] Data available event:", event.data.size, "bytes", event.data.type, event);
+        console.log(
+          "[ondataavailable] Data available event:",
+          event.data.size,
+          "bytes",
+          event.data.type,
+          event,
+        );
         if (event.data && event.data.size > 0) {
           recordedChunksRef.current.push(event.data);
-          console.log(`[ondataavailable] Recorded chunk: ${event.data.size} bytes, type: ${event.data.type}, total chunks: ${recordedChunksRef.current.length}`);
+          console.log(
+            `[ondataavailable] Recorded chunk: ${event.data.size} bytes, type: ${event.data.type}, total chunks: ${recordedChunksRef.current.length}`,
+          );
         } else {
           console.warn("[ondataavailable] Received empty data chunk");
         }
@@ -162,16 +190,21 @@ export default function VideoRecorder({ onRecordingComplete }: VideoRecorderProp
 
       mediaRecorder.onstart = () => {
         console.log("[onstart] Recording started");
-        setRecordingStatus('recording');
+        setRecordingStatus("recording");
         setIsRecording(true);
       };
 
       mediaRecorder.onstop = () => {
-        console.log("[onstop] Recording stopped, chunks:", recordedChunksRef.current.length);
-        setRecordingStatus('inactive');
+        console.log(
+          "[onstop] Recording stopped, chunks:",
+          recordedChunksRef.current.length,
+        );
+        setRecordingStatus("inactive");
         setIsRecording(false);
-        // Force data collection before processing
-        if (mediaRecorder.state === 'inactive' && recordedChunksRef.current.length === 0) {
+        if (
+          mediaRecorder.state === "inactive" &&
+          recordedChunksRef.current.length === 0
+        ) {
           console.warn("[onstop] No data collected during recording");
         }
         setTimeout(() => {
@@ -182,25 +215,30 @@ export default function VideoRecorder({ onRecordingComplete }: VideoRecorderProp
       mediaRecorder.onerror = (event) => {
         console.error("[onerror] MediaRecorder error:", event);
         setError("Recording failed due to an error");
-        setRecordingStatus('inactive');
+        setRecordingStatus("inactive");
         setIsRecording(false);
       };
 
       mediaRecorderRef.current = mediaRecorder;
-      // Start recording with a timeslice to ensure ondataavailable fires periodically
-      // Timeslice in ms (e.g., 1000ms = 1s)
-      console.log("[startRecording] Starting MediaRecorder with timeslice 1000ms", options);
+      // Log before and after starting MediaRecorder
+      console.log("About to start MediaRecorder");
       mediaRecorder.start(1000);
+      console.log("MediaRecorder started");
     } catch (error) {
       console.error("[startRecording] Failed to start recording:", error);
-      setError(`Failed to start recording: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      setRecordingStatus('inactive');
+      setError(
+        `Failed to start recording: ${error instanceof Error ? error.message : "Unknown error"}`,
+      );
+      setRecordingStatus("inactive");
       setIsRecording(false);
     }
   };
 
   const stopRecording = () => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+    if (
+      mediaRecorderRef.current &&
+      mediaRecorderRef.current.state === "recording"
+    ) {
       console.log("Stopping recording...");
       // Request final data before stopping
       mediaRecorderRef.current.requestData();
@@ -210,7 +248,10 @@ export default function VideoRecorder({ onRecordingComplete }: VideoRecorderProp
 
   const handleRecordingComplete = async () => {
     try {
-      console.log("Processing recording, chunks available:", recordedChunksRef.current.length);
+      console.log(
+        "Processing recording, chunks available:",
+        recordedChunksRef.current.length,
+      );
 
       if (recordedChunksRef.current.length === 0) {
         throw new Error("No recording data available");
@@ -227,7 +268,7 @@ export default function VideoRecorder({ onRecordingComplete }: VideoRecorderProp
 
       // Use the actual type from the first chunk if available
       const firstChunkType = recordedChunksRef.current[0]?.type;
-      const blobType = firstChunkType || 'video/webm';
+      const blobType = firstChunkType || "video/webm";
       const blob = new Blob(recordedChunksRef.current, { type: blobType });
 
       console.log(`Recording complete: ${blob.size} bytes, type: ${blob.type}`);
@@ -238,10 +279,11 @@ export default function VideoRecorder({ onRecordingComplete }: VideoRecorderProp
 
       // Upload the recording
       await uploadRecording(blob);
-
     } catch (error) {
       console.error("Failed to process recording:", error);
-      setError(`Failed to process recording: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setError(
+        `Failed to process recording: ${error instanceof Error ? error.message : "Unknown error"}`,
+      );
     }
   };
 
@@ -266,10 +308,11 @@ export default function VideoRecorder({ onRecordingComplete }: VideoRecorderProp
       console.log("Upload successful:", videoUrl);
 
       onRecordingComplete?.(blob, videoUrl);
-
     } catch (error) {
       console.error("Upload failed:", error);
-      setError(`Upload failed: ${error instanceof Error ? error.message : "Unknown error"}`);
+      setError(
+        `Upload failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+      );
 
       onRecordingComplete?.(blob);
     }
@@ -299,7 +342,7 @@ export default function VideoRecorder({ onRecordingComplete }: VideoRecorderProp
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-3">
           <p className="text-red-700 text-sm">{error}</p>
-          <button 
+          <button
             onClick={() => {
               setError(null);
               initializeMediaStream();

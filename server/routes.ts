@@ -9,6 +9,7 @@ import { promisify } from "util";
 import * as crypto from 'crypto';
 import { sendContactEmail } from "./email"; // Added import
 import { Client } from "@replit/object-storage";
+import fs from "fs";
 
 const randomBytesAsync = promisify(randomBytes);
 const objectStorage = new Client({
@@ -41,7 +42,7 @@ async function processAiAnalysis(feedbackId: number, videoUrl: string) {
 
     // Mock AI analysis - replace with actual AI service call
     const mockFeedback = generateMockAiFeedback();
-    
+
     // Simulate processing time
     await new Promise(resolve => setTimeout(resolve, 3000));
 
@@ -474,16 +475,18 @@ export function registerRoutes(app: Express): Server {
 
     try {
       console.log("Upload request received, files:", req.files ? Object.keys(req.files) : 'none');
-      
+
       const videoFile = req.files?.video;
       if (!videoFile || Array.isArray(videoFile)) {
         console.log("No video file in request:", { files: req.files });
         return res.status(400).json({ message: "No video file provided" });
       }
 
+      // Read the file from tempFilePath
+      const fileBuffer = fs.readFileSync(videoFile.tempFilePath);
       console.log("Video file details:", { 
         name: videoFile.name, 
-        size: videoFile.data.length, 
+        size: fileBuffer.length, 
         mimetype: videoFile.mimetype 
       });
 
@@ -492,9 +495,9 @@ export function registerRoutes(app: Express): Server {
       const filename = `videos/${req.user.id}_${timestamp}.webm`;
 
       console.log("Uploading to object storage:", filename);
-      
+
       // Upload to object storage
-      await objectStorage.uploadFromBytes(filename, videoFile.data);
+      await objectStorage.uploadFromBytes(filename, fileBuffer);
 
       // Generate a URL for the uploaded video
       const videoUrl = `/api/video/${encodeURIComponent(filename)}`;
@@ -520,7 +523,7 @@ export function registerRoutes(app: Express): Server {
       const filename = decodeURIComponent(req.params.filename);
       const videoData = await objectStorage.downloadAsBytes(filename);
       const buffer = Buffer.from(videoData);
-      
+
       res.setHeader('Content-Type', 'video/webm');
       res.setHeader('Content-Length', buffer.length.toString());
       res.send(buffer);
