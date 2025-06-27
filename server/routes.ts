@@ -1,3 +1,4 @@
+typescript
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { setupAuth } from "./auth";
@@ -41,7 +42,7 @@ async function processAiAnalysis(feedbackId: number, videoUrl: string) {
       .where(eq(feedback.id, feedbackId));
 
     const { aiModels } = await import("@db/schema");
-    
+
     // Get the default AI model
     const [defaultModel] = await db
       .select()
@@ -53,7 +54,7 @@ async function processAiAnalysis(feedbackId: number, videoUrl: string) {
       // Fall back to mock if no AI model configured
       console.log("No AI model configured, using mock feedback");
       const mockFeedback = generateMockAiFeedback();
-      
+
       await db
         .update(feedback)
         .set({
@@ -70,7 +71,7 @@ async function processAiAnalysis(feedbackId: number, videoUrl: string) {
       // Note: Current AI models cannot directly analyze video files from our storage
       // This implementation provides text-based feedback as a placeholder
       const analysisPrompt = `Please provide feedback on an oral advocacy video submission. 
-      
+
 Based on typical advocacy performance criteria, provide constructive feedback covering:
 1. Argument structure and legal reasoning
 2. Voice projection and clarity  
@@ -91,7 +92,7 @@ Note: This is a placeholder analysis as video content analysis requires speciali
       if (defaultModel.provider === 'anthropic') {
         headers['x-api-key'] = defaultModel.apiKey;
         headers['anthropic-version'] = '2023-06-01';
-        
+
         requestBody = {
           model: defaultModel.model,
           max_tokens: defaultModel.maxTokens,
@@ -102,7 +103,7 @@ Note: This is a placeholder analysis as video content analysis requires speciali
         };
       } else if (defaultModel.provider === 'google' || defaultModel.provider === 'gemini') {
         headers['Authorization'] = `Bearer ${defaultModel.apiKey}`;
-        
+
         requestBody = {
           contents: [
             {
@@ -119,7 +120,7 @@ Note: This is a placeholder analysis as video content analysis requires speciali
       } else {
         // Default to OpenAI format
         headers['Authorization'] = `Bearer ${defaultModel.apiKey}`;
-        
+
         requestBody = {
           model: defaultModel.model,
           messages: [
@@ -133,11 +134,18 @@ Note: This is a placeholder analysis as video content analysis requires speciali
 
       console.log(`Making AI request to ${defaultModel.provider} model ${defaultModel.model}`);
 
-      const response = await fetch(defaultModel.endpoint, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(requestBody),
-      });
+      // Use the modified endpoint for Gemini
+        const apiEndpoint = (defaultModel.provider === 'google' || defaultModel.provider === 'gemini') 
+          ? (defaultModel.endpoint.includes('?') 
+              ? `${defaultModel.endpoint}&key=${defaultModel.apiKey}`
+              : `${defaultModel.endpoint}?key=${defaultModel.apiKey}`)
+          : defaultModel.endpoint;
+
+        const response = await fetch(apiEndpoint, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(requestBody),
+        });
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -146,7 +154,7 @@ Note: This is a placeholder analysis as video content analysis requires speciali
 
       const data = await response.json();
       let aiContent;
-      
+
       if (defaultModel.provider === 'anthropic') {
         aiContent = data.content?.[0]?.text || 'Unable to generate feedback';
       } else if (defaultModel.provider === 'google' || defaultModel.provider === 'gemini') {
@@ -155,16 +163,16 @@ Note: This is a placeholder analysis as video content analysis requires speciali
         // Default to OpenAI format
         aiContent = data.choices?.[0]?.message?.content || 'Unable to generate feedback';
       }
-      
+
       // Add disclaimer about video analysis limitations
       const disclaimerContent = `[Note: This feedback is based on general advocacy principles. Full video analysis capabilities require additional setup for direct video processing.]\n\n${aiContent}`;
-      
+
       // Extract rating from content (look for various rating patterns)
       const ratingMatch = aiContent.match(/(?:rating|score):\s*(\d+)(?:\/5)?/i) || 
                           aiContent.match(/(\d+)\/5/) ||
                           aiContent.match(/(\d+)\s*out\s*of\s*5/i) ||
                           aiContent.match(/rate(?:d|s)?\s*(?:this|the)?\s*(?:performance|submission)?\s*(?:at|as)?\s*(\d+)/i);
-      
+
       const extractedRating = ratingMatch ? parseInt(ratingMatch[1]) : 3;
       const finalRating = Math.max(1, Math.min(5, extractedRating)); // Ensure 1-5 range
 
@@ -185,10 +193,10 @@ Note: This is a placeholder analysis as video content analysis requires speciali
       console.log(`AI analysis completed for feedback ${feedbackId} using model ${defaultModel.name} (rating: ${finalRating}, confidence: ${confidenceScore}%)`);
     } catch (aiError) {
       console.error("AI API call failed, falling back to mock:", aiError);
-      
+
       // Fall back to mock if AI call fails
       const mockFeedback = generateMockAiFeedback();
-      
+
       await db
         .update(feedback)
         .set({
@@ -675,7 +683,7 @@ export function registerRoutes(app: Express): Server {
     try {
       const filename = decodeURIComponent(req.params.filename);
       console.log("Attempting to serve video:", filename);
-      
+
       const videoData = await objectStorage.downloadAsBytes(filename);
       console.log("Video data received:", {
         type: typeof videoData,
@@ -685,9 +693,9 @@ export function registerRoutes(app: Express): Server {
         hasLength: 'length' in videoData,
         length: videoData?.length
       });
-      
+
       let buffer: Buffer;
-      
+
       // Handle the object storage response structure
       if (videoData && typeof videoData === 'object' && 'ok' in videoData && 'value' in videoData) {
         // Handle Replit object storage response format
@@ -727,7 +735,7 @@ export function registerRoutes(app: Express): Server {
       res.setHeader('Accept-Ranges', 'bytes');
       res.setHeader('Cache-Control', 'public, max-age=31536000');
       res.send(buffer);
-      
+
       console.log("Video served successfully");
     } catch (error) {
       console.error("Error serving video:", error);
@@ -749,7 +757,7 @@ export function registerRoutes(app: Express): Server {
     try {
       const filename = decodeURIComponent(req.params.filename);
       const videoData = await objectStorage.downloadAsBytes(filename);
-      
+
       res.json({
         filename,
         dataType: typeof videoData,
@@ -859,7 +867,7 @@ export function registerRoutes(app: Express): Server {
 
     try {
       const { videoUrl } = req.body;
-      
+
       if (!videoUrl) {
         return res.status(400).json({ message: "Video URL is required" });
       }
@@ -876,7 +884,7 @@ export function registerRoutes(app: Express): Server {
 
       // Delete from object storage
       const deleteResult = await objectStorage.delete(filename);
-      
+
       if (deleteResult.ok) {
         console.log("Video deleted successfully:", filename);
         res.json({ message: "Video deleted successfully" });
@@ -901,14 +909,14 @@ export function registerRoutes(app: Express): Server {
         .select()
         .from(aiModels)
         .orderBy(aiModels.createdAt);
-      
+
       // Don't send API keys in response
       const modelsWithoutKeys = allModels.map(model => ({
         ...model,
         apiKey: model.apiKey ? '••••••••' : '',
         temperature: model.temperature / 100 // Convert back to decimal
       }));
-      
+
       res.json(modelsWithoutKeys);
     } catch (error) {
       console.error("Error fetching AI models:", error);
@@ -938,7 +946,7 @@ export function registerRoutes(app: Express): Server {
         .values({
           name,
           provider,
-          apiKey,
+          apiKey,```typescript
           endpoint,
           model,
           temperature: Math.round(temperature * 100), // Store as integer
@@ -1051,7 +1059,7 @@ export function registerRoutes(app: Express): Server {
 
       // Simple test message
       const testMessage = "Please respond with 'AI model test successful' to confirm you're working correctly.";
-      
+
       try {
         let requestBody: any;
         let headers: any = {
@@ -1062,7 +1070,7 @@ export function registerRoutes(app: Express): Server {
         if (model.provider === 'anthropic') {
           headers['x-api-key'] = model.apiKey;
           headers['anthropic-version'] = '2023-06-01';
-          
+
           requestBody = {
             model: model.model,
             max_tokens: Math.min(model.maxTokens, 100),
@@ -1073,7 +1081,7 @@ export function registerRoutes(app: Express): Server {
           };
         } else if (model.provider === 'google' || model.provider === 'gemini') {
           headers['Authorization'] = `Bearer ${model.apiKey}`;
-          
+
           requestBody = {
             contents: [
               {
@@ -1090,7 +1098,7 @@ export function registerRoutes(app: Express): Server {
         } else {
           // Default to OpenAI format
           headers['Authorization'] = `Bearer ${model.apiKey}`;
-          
+
           requestBody = {
             model: model.model,
             messages: [
@@ -1102,7 +1110,14 @@ export function registerRoutes(app: Express): Server {
           };
         }
 
-        const response = await fetch(model.endpoint, {
+        // Use the modified endpoint for Gemini
+        const apiEndpoint = (model.provider === 'google' || model.provider === 'gemini') 
+          ? (model.endpoint.includes('?') 
+              ? `${model.endpoint}&key=${model.apiKey}`
+              : `${model.endpoint}?key=${model.apiKey}`)
+          : model.endpoint;
+
+        const response = await fetch(apiEndpoint, {
           method: 'POST',
           headers,
           body: JSON.stringify(requestBody),
@@ -1114,7 +1129,7 @@ export function registerRoutes(app: Express): Server {
 
         const data = await response.json();
         let aiResponse;
-        
+
         if (model.provider === 'anthropic') {
           aiResponse = data.content?.[0]?.text || 'No response content';
         } else if (model.provider === 'google' || model.provider === 'gemini') {
