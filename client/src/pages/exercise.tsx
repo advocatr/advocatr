@@ -151,6 +151,7 @@ export default function Exercise() {
     onSuccess: async () => {
       toast({ title: "Success", description: "Recording saved successfully" });
       await refetchProgress();
+      await refetchAiFeedback(); // Refresh AI feedback status
       setShowProfessionalAnswer(true);
     },
     onError: (error: Error) => {

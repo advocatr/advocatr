@@ -303,6 +303,18 @@ export function registerRoutes(app: Express): Server {
       );
 
     if (existing) {
+      // If updating with a new video URL, clear any existing AI feedback
+      if (videoUrl && existing.videoUrl !== videoUrl) {
+        await db
+          .delete(feedback)
+          .where(
+            and(
+              eq(feedback.progressId, existing.id),
+              eq(feedback.isAiGenerated, true)
+            )
+          );
+      }
+
       const [updated] = await db
         .update(userProgress)
         .set({ videoUrl, completed, updatedAt: new Date() })
@@ -754,7 +766,7 @@ export function registerRoutes(app: Express): Server {
       return res.status(404).send("Progress record not found or no video submitted");
     }
 
-    // Check if AI feedback already exists
+    // Check if AI feedback already exists and delete it if found (to allow reanalysis)
     const existingAiFeedback = await db
       .select()
       .from(feedback)
@@ -766,7 +778,15 @@ export function registerRoutes(app: Express): Server {
       );
 
     if (existingAiFeedback.length > 0) {
-      return res.status(400).json({ message: "AI feedback already exists for this submission" });
+      // Delete existing AI feedback to allow fresh analysis
+      await db
+        .delete(feedback)
+        .where(
+          and(
+            eq(feedback.progressId, progressId),
+            eq(feedback.isAiGenerated, true)
+          )
+        );
     }
 
     // Create pending AI feedback record
