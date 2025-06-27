@@ -1,6 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, useLocation } from "wouter";
 import VideoPlayer from "@/components/video-player";
+import VideoRecorder from "@/components/video-recorder";
 import FeedbackForm from "@/components/feedback-form";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -190,16 +191,18 @@ export default function Exercise() {
 
           <div>
             <h2 className="text-xl font-semibold mb-4">Your Submission</h2>
-            <VideoPlayer 
-              url={progress?.videoUrl} 
-              isRecordingEnabled={!progress?.videoUrl}
-              onRecordingComplete={(blob, videoUrl) => {
-                if (videoUrl) {
-                  // Update progress with the server video URL
-                  updateProgressMutation.mutate({ videoUrl, completed: true });
-                }
-              }}
-            />
+            {progress?.videoUrl ? (
+              <VideoPlayer url={progress.videoUrl} />
+            ) : (
+              <VideoRecorder 
+                onRecordingComplete={(blob, videoUrl) => {
+                  if (videoUrl) {
+                    // Update progress with the server video URL
+                    updateProgressMutation.mutate({ videoUrl, completed: true });
+                  }
+                }}
+              />
+            )}
           </div>
         </div>
 
