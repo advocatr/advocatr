@@ -737,20 +737,18 @@ export function registerRoutes(app: Express): Server {
       try {
         const uploadResult = await objectStorage.uploadFromBytes(filename, fileBuffer);
         console.log("Upload result:", JSON.stringify(uploadResult, null, 2));
-        
+
         if (!uploadResult.ok) {
+          console.error("Upload failed with error:", uploadResult.error);
           throw new Error(`Upload failed: ${uploadResult.error?.message || 'Unknown error'}`);
         }
 
-        // Generate a URL for the uploaded video
         const videoUrl = `/api/video/${encodeURIComponent(filename)}`;
-
         console.log("Upload successful:", videoUrl);
         res.json({ videoUrl });
       } catch (uploadError) {
         console.error("Object storage upload failed:", uploadError);
-        
-        // Check if this is the "Error code undefined" issue
+
         if (uploadError.message.includes('Error code undefined')) {
           return res.status(503).json({ 
             message: "Object storage service is currently unavailable. Please try again later.", 
@@ -758,7 +756,8 @@ export function registerRoutes(app: Express): Server {
             retry: true 
           });
         }
-        
+
+        console.error("Upload error details:", uploadError);
         throw uploadError;
       }
     } catch (error) {
