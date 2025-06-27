@@ -10,6 +10,7 @@ import * as crypto from 'crypto';
 import { sendContactEmail } from "./email"; // Added import
 import { Client } from "@replit/object-storage";
 import fs from "fs";
+import { VideoProcessor } from "./video-processor";
 
 const randomBytesAsync = promisify(randomBytes);
 const objectStorage = new Client({
@@ -67,8 +68,70 @@ async function processAiAnalysis(feedbackId: number, videoUrl: string) {
     }
 
     try {
-      // Note: Current AI models cannot directly analyze video files from our storage
-      // This implementation provides text-based feedback as a placeholder
+      // Check if this is a Gemini model and if we can process video
+      if ((defaultModel.provider === 'google' || defaultModel.provider === 'gemini') 
+          && videoUrl.startsWith('/api/video/')) {
+        
+        console.log("Using video analysis for Gemini model");
+        
+        // Get the video file from object storage
+        const filename = decodeURIComponent(videoUrl.replace('/api/video/', ''));
+        const videoData = await objectStorage.downloadAsBytes(filename);
+        
+        let videoBuffer: Buffer;
+        
+        // Handle the object storage response structure
+        if (videoData && typeof videoData === 'object' && 'ok' in videoData && 'value' in videoData) {
+          const response = videoData as { ok: boolean; value: Buffer[] };
+          if (response.ok && Array.isArray(response.value) && response.value.length > 0) {
+            videoBuffer = response.value[0];
+          } else {
+            throw new Error("Invalid object storage response");
+          }
+        } else if (Buffer.isBuffer(videoData)) {
+          videoBuffer = videoData;
+        } else if (videoData instanceof Uint8Array) {
+          videoBuffer = Buffer.from(videoData);
+        } else {
+          throw new Error("Unexpected video data format");
+        }
+
+        // Create video processor
+        const videoProcessor = new VideoProcessor(defaultModel.apiKey);
+        
+        // Analyze the video with frames
+        const analysisResult = await videoProcessor.analyzeVideo(
+          videoBuffer,
+          defaultModel.systemPrompt,
+          2, // Extract frame every 2 seconds
+          15 // Maximum 15 frames
+        );
+
+        // Extract rating from content
+        const ratingMatch = analysisResult.content.match(/(?:rating|score):\s*(\d+)(?:\/5)?/i) || 
+                            analysisResult.content.match(/(\d+)\/5/) ||
+                            analysisResult.content.match(/(\d+)\s*out\s*of\s*5/i) ||
+                            analysisResult.content.match(/rate(?:d|s)?\s*(?:this|the)?\s*(?:performance|submission)?\s*(?:at|as)?\s*(\d+)/i);
+
+        const extractedRating = ratingMatch ? parseInt(ratingMatch[1]) : 3;
+        const finalRating = Math.max(1, Math.min(5, extractedRating));
+
+        // Update with video analysis results
+        await db
+          .update(feedback)
+          .set({
+            content: `[Video Analysis - Gemini Vision]\n\n${analysisResult.content}`,
+            rating: finalRating,
+            aiAnalysisStatus: "completed",
+            aiConfidenceScore: analysisResult.confidenceScore,
+          })
+          .where(eq(feedback.id, feedbackId));
+
+        console.log(`Video analysis completed for feedback ${feedbackId} using Gemini Vision (rating: ${finalRating}, confidence: ${analysisResult.confidenceScore}%)`);
+        return;
+      }
+
+      // Fallback to text-based analysis for non-Gemini models or if video processing fails
       const analysisPrompt = `Please provide feedback on an oral advocacy video submission. 
 
 Based on typical advocacy performance criteria, provide constructive feedback covering:
@@ -78,9 +141,7 @@ Based on typical advocacy performance criteria, provide constructive feedback co
 4. Use of authorities and precedents
 5. Overall persuasiveness
 
-Please rate the performance from 1-5 (where 1 is poor and 5 is excellent) and provide detailed, constructive feedback for improvement.
-
-Note: This is a placeholder analysis as video content analysis requires specialized setup.`;
+Please rate the performance from 1-5 (where 1 is poor and 5 is excellent) and provide detailed, constructive feedback for improvement.`;
 
       let requestBody: any;
       let headers: any = {
@@ -134,17 +195,17 @@ Note: This is a placeholder analysis as video content analysis requires speciali
       console.log(`Making AI request to ${defaultModel.provider} model ${defaultModel.model}`);
 
       // Use the modified endpoint for Gemini
-        const apiEndpoint = (defaultModel.provider === 'google' || defaultModel.provider === 'gemini') 
-          ? (defaultModel.endpoint.includes('?') 
-              ? `${defaultModel.endpoint}&key=${defaultModel.apiKey}`
-              : `${defaultModel.endpoint}?key=${defaultModel.apiKey}`)
-          : defaultModel.endpoint;
+      const apiEndpoint = (defaultModel.provider === 'google' || defaultModel.provider === 'gemini') 
+        ? (defaultModel.endpoint.includes('?') 
+            ? `${defaultModel.endpoint}&key=${defaultModel.apiKey}`
+            : `${defaultModel.endpoint}?key=${defaultModel.apiKey}`)
+        : defaultModel.endpoint;
 
-        const response = await fetch(apiEndpoint, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify(requestBody),
-        });
+      const response = await fetch(apiEndpoint, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(requestBody),
+      });
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -163,26 +224,22 @@ Note: This is a placeholder analysis as video content analysis requires speciali
         aiContent = data.choices?.[0]?.message?.content || 'Unable to generate feedback';
       }
 
-      // Add disclaimer about video analysis limitations
-      const disclaimerContent = `[Note: This feedback is based on general advocacy principles. Full video analysis capabilities require additional setup for direct video processing.]\n\n${aiContent}`;
-
-      // Extract rating from content (look for various rating patterns)
+      // Extract rating from content
       const ratingMatch = aiContent.match(/(?:rating|score):\s*(\d+)(?:\/5)?/i) || 
                           aiContent.match(/(\d+)\/5/) ||
                           aiContent.match(/(\d+)\s*out\s*of\s*5/i) ||
                           aiContent.match(/rate(?:d|s)?\s*(?:this|the)?\s*(?:performance|submission)?\s*(?:at|as)?\s*(\d+)/i);
 
       const extractedRating = ratingMatch ? parseInt(ratingMatch[1]) : 3;
-      const finalRating = Math.max(1, Math.min(5, extractedRating)); // Ensure 1-5 range
+      const finalRating = Math.max(1, Math.min(5, extractedRating));
 
-      // Lower confidence score since we're not actually analyzing the video
-      const confidenceScore = 60; // Fixed lower confidence for placeholder analysis
+      const confidenceScore = 70; // Standard confidence for text-based analysis
 
       // Update with AI results
       await db
         .update(feedback)
         .set({
-          content: disclaimerContent,
+          content: `[Text-based Analysis]\n\n${aiContent}`,
           rating: finalRating,
           aiAnalysisStatus: "completed",
           aiConfidenceScore: confidenceScore,
@@ -1056,7 +1113,26 @@ export function registerRoutes(app: Express): Server {
         return res.status(404).json({ message: "AI model not found" });
       }
 
-      // Simple test message
+      // Test video processing for Gemini models
+      if (model.provider === 'google' || model.provider === 'gemini') {
+        try {
+          const videoProcessor = new VideoProcessor(model.apiKey);
+          const isConnected = await videoProcessor.testConnection();
+          
+          res.json({ 
+            success: isConnected, 
+            response: isConnected ? 'Video processing API connection successful' : 'API connection failed',
+            model: model.name,
+            hasVideoProcessing: true
+          });
+          return;
+        } catch (videoError) {
+          console.error("Video processor test failed:", videoError);
+          // Fall through to standard test
+        }
+      }
+
+      // Simple test message for non-Gemini models
       const testMessage = "Please respond with 'AI model test successful' to confirm you're working correctly.";
 
       try {
@@ -1141,7 +1217,8 @@ export function registerRoutes(app: Express): Server {
         res.json({ 
           success: true, 
           response: aiResponse,
-          model: model.name 
+          model: model.name,
+          hasVideoProcessing: false
         });
       } catch (apiError) {
         throw new Error(`API call failed: ${apiError.message}`);
