@@ -1,4 +1,3 @@
-
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Circle, Square } from "lucide-react";
@@ -91,9 +90,9 @@ export default function VideoRecorder({ onRecordingComplete }: VideoRecorderProp
     } catch (error) {
       console.error("Failed to initialize media stream:", error);
       cleanup();
-      
+
       let errorMessage = "Failed to access camera and microphone. ";
-      
+
       if (error instanceof Error) {
         switch (error.name) {
           case 'NotAllowedError':
@@ -115,7 +114,7 @@ export default function VideoRecorder({ onRecordingComplete }: VideoRecorderProp
             errorMessage += error.message;
         }
       }
-      
+
       setError(errorMessage);
       setIsInitialized(false);
     }
@@ -152,49 +151,48 @@ export default function VideoRecorder({ onRecordingComplete }: VideoRecorderProp
       const mediaRecorder = new MediaRecorder(streamRef.current, options);
 
       mediaRecorder.ondataavailable = (event) => {
-        console.log("Data available event:", event.data.size, "bytes", event.data.type);
+        console.log("[ondataavailable] Data available event:", event.data.size, "bytes", event.data.type, event);
         if (event.data && event.data.size > 0) {
           recordedChunksRef.current.push(event.data);
-          console.log(`Recorded chunk: ${event.data.size} bytes, type: ${event.data.type}, total chunks: ${recordedChunksRef.current.length}`);
+          console.log(`[ondataavailable] Recorded chunk: ${event.data.size} bytes, type: ${event.data.type}, total chunks: ${recordedChunksRef.current.length}`);
         } else {
-          console.warn("Received empty data chunk");
+          console.warn("[ondataavailable] Received empty data chunk");
         }
       };
 
       mediaRecorder.onstart = () => {
-        console.log("Recording started");
+        console.log("[onstart] Recording started");
         setRecordingStatus('recording');
         setIsRecording(true);
       };
 
       mediaRecorder.onstop = () => {
-        console.log("Recording stopped, chunks:", recordedChunksRef.current.length);
+        console.log("[onstop] Recording stopped, chunks:", recordedChunksRef.current.length);
         setRecordingStatus('inactive');
         setIsRecording(false);
-        
         // Force data collection before processing
         if (mediaRecorder.state === 'inactive' && recordedChunksRef.current.length === 0) {
-          console.warn("No data collected during recording");
+          console.warn("[onstop] No data collected during recording");
         }
-        
         setTimeout(() => {
           handleRecordingComplete();
         }, 200);
       };
 
       mediaRecorder.onerror = (event) => {
-        console.error("MediaRecorder error:", event);
+        console.error("[onerror] MediaRecorder error:", event);
         setError("Recording failed due to an error");
         setRecordingStatus('inactive');
         setIsRecording(false);
       };
 
       mediaRecorderRef.current = mediaRecorder;
-      // Start recording without time slice to ensure data is collected
-      mediaRecorder.start();
-
+      // Start recording with a timeslice to ensure ondataavailable fires periodically
+      // Timeslice in ms (e.g., 1000ms = 1s)
+      console.log("[startRecording] Starting MediaRecorder with timeslice 1000ms", options);
+      mediaRecorder.start(1000);
     } catch (error) {
-      console.error("Failed to start recording:", error);
+      console.error("[startRecording] Failed to start recording:", error);
       setError(`Failed to start recording: ${error instanceof Error ? error.message : 'Unknown error'}`);
       setRecordingStatus('inactive');
       setIsRecording(false);
@@ -213,7 +211,7 @@ export default function VideoRecorder({ onRecordingComplete }: VideoRecorderProp
   const handleRecordingComplete = async () => {
     try {
       console.log("Processing recording, chunks available:", recordedChunksRef.current.length);
-      
+
       if (recordedChunksRef.current.length === 0) {
         throw new Error("No recording data available");
       }
@@ -266,13 +264,13 @@ export default function VideoRecorder({ onRecordingComplete }: VideoRecorderProp
 
       const { videoUrl } = await response.json();
       console.log("Upload successful:", videoUrl);
-      
+
       onRecordingComplete?.(blob, videoUrl);
 
     } catch (error) {
       console.error("Upload failed:", error);
       setError(`Upload failed: ${error instanceof Error ? error.message : "Unknown error"}`);
-      
+
       onRecordingComplete?.(blob);
     }
   };
@@ -289,7 +287,7 @@ export default function VideoRecorder({ onRecordingComplete }: VideoRecorderProp
           className="w-full h-64 object-cover"
           style={{ transform: "scaleX(-1)" }}
         />
-        
+
         {isRecording && (
           <div className="absolute top-4 left-4 flex items-center space-x-2 bg-red-600 text-white px-3 py-1 rounded-full">
             <Circle className="h-3 w-3 animate-pulse" fill="currentColor" />
