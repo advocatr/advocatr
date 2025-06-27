@@ -28,7 +28,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
       icon: LayoutGrid,
     },
     {
-      name: "Progress",
+      name: "User Management",
       href: "/admin/progress",
       icon: Users,
     },
