@@ -522,10 +522,21 @@ export function registerRoutes(app: Express): Server {
     try {
       const filename = decodeURIComponent(req.params.filename);
       const videoData = await objectStorage.downloadAsBytes(filename);
-      const buffer = Buffer.from(videoData);
+      
+      // Handle the response from object storage properly
+      let buffer: Buffer;
+      if (videoData instanceof Uint8Array) {
+        buffer = Buffer.from(videoData);
+      } else if (Buffer.isBuffer(videoData)) {
+        buffer = videoData;
+      } else {
+        // If it's an object with a buffer property or similar
+        buffer = Buffer.from(videoData as any);
+      }
 
       res.setHeader('Content-Type', 'video/webm');
       res.setHeader('Content-Length', buffer.length.toString());
+      res.setHeader('Accept-Ranges', 'bytes');
       res.send(buffer);
     } catch (error) {
       console.error("Error serving video:", error);

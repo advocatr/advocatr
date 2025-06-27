@@ -10,6 +10,8 @@ interface VideoPlayerProps {
 export default function VideoPlayer({ url }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [hasError, setHasError] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   const togglePlayback = () => {
     if (videoRef.current) {
@@ -20,6 +22,24 @@ export default function VideoPlayer({ url }: VideoPlayerProps) {
       }
       setIsPlaying(!isPlaying);
     }
+  };
+
+  const handleVideoLoad = () => {
+    setIsLoading(false);
+    setHasError(false);
+  };
+
+  const handleVideoError = () => {
+    setIsLoading(false);
+    setHasError(true);
+  };
+
+  const handlePlay = () => {
+    setIsPlaying(true);
+  };
+
+  const handlePause = () => {
+    setIsPlaying(false);
   };
 
   if (!url) {
@@ -39,11 +59,33 @@ export default function VideoPlayer({ url }: VideoPlayerProps) {
           controls
           src={url}
           playsInline
+          onLoadedData={handleVideoLoad}
+          onError={handleVideoError}
+          onPlay={handlePlay}
+          onPause={handlePause}
         />
+        
+        {isLoading && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50">
+            <p className="text-white">Loading video...</p>
+          </div>
+        )}
+        
+        {hasError && (
+          <div className="absolute inset-0 flex items-center justify-center bg-red-900 bg-opacity-50">
+            <p className="text-white text-center px-4">
+              Error loading video. Please try refreshing the page.
+            </p>
+          </div>
+        )}
       </div>
 
       <div className="flex gap-2">
-        <Button onClick={togglePlayback} className="flex items-center gap-2">
+        <Button 
+          onClick={togglePlayback} 
+          className="flex items-center gap-2"
+          disabled={hasError || isLoading}
+        >
           {isPlaying ? (
             <Pause className="h-4 w-4" />
           ) : (
