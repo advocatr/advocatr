@@ -187,9 +187,10 @@ export default function VideoPlayer({
 
       // Set up event handlers
       mediaRecorder.ondataavailable = (event) => {
+        console.log("Data available event:", event.data.size, "bytes");
         if (event.data && event.data.size > 0) {
           recordedChunksRef.current.push(event.data);
-          console.log(`Recorded chunk: ${event.data.size} bytes`);
+          console.log(`Recorded chunk: ${event.data.size} bytes, total chunks: ${recordedChunksRef.current.length}`);
         }
       };
 
@@ -200,10 +201,14 @@ export default function VideoPlayer({
       };
 
       mediaRecorder.onstop = () => {
-        console.log("Recording stopped");
+        console.log("Recording stopped, chunks:", recordedChunksRef.current.length);
         setRecordingStatus('inactive');
         setIsRecording(false);
-        handleRecordingComplete();
+        
+        // Process recording immediately
+        setTimeout(() => {
+          handleRecordingComplete();
+        }, 100);
       };
 
       mediaRecorder.onpause = () => {
@@ -225,8 +230,8 @@ export default function VideoPlayer({
 
       mediaRecorderRef.current = mediaRecorder;
 
-      // Start recording with time slice for progressive data collection
-      mediaRecorder.start(1000); // Collect data every 1000ms
+      // Start recording - use smaller time slices to ensure data collection
+      mediaRecorder.start(100); // Collect data every 100ms
 
     } catch (error) {
       console.error("Failed to start recording:", error);
@@ -238,25 +243,37 @@ export default function VideoPlayer({
 
   const stopRecording = () => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      console.log("Stopping recording...");
       mediaRecorderRef.current.stop();
+      
+      // Request any remaining data
+      if (mediaRecorderRef.current.state === 'recording') {
+        mediaRecorderRef.current.requestData();
+      }
     }
   };
 
   const handleRecordingComplete = async () => {
     try {
+      console.log("Processing recording, chunks available:", recordedChunksRef.current.length);
+      
       if (recordedChunksRef.current.length === 0) {
-        throw new Error("No recording data available");
+        throw new Error("No recording data available - check browser permissions and MediaRecorder support");
       }
 
-      // Create blob from recorded chunks
-      const blob = new Blob(recordedChunksRef.current, {
-        type: recordedChunksRef.current[0].type || 'video/webm'
+      // Log chunk details
+      recordedChunksRef.current.forEach((chunk, index) => {
+        console.log(`Chunk ${index}: ${chunk.size} bytes, type: ${chunk.type}`);
       });
 
-      console.log(`Recording complete: ${blob.size} bytes`);
+      // Create blob from recorded chunks with explicit type
+      const mimeType = recordedChunksRef.current[0]?.type || 'video/webm';
+      const blob = new Blob(recordedChunksRef.current, { type: mimeType });
+
+      console.log(`Recording complete: ${blob.size} bytes, type: ${blob.type}`);
 
       if (blob.size === 0) {
-        throw new Error("Recording produced empty file");
+        throw new Error("Recording produced empty file - this may be due to codec issues or insufficient recording time");
       }
 
       // Upload the recording
