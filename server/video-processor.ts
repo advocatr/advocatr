@@ -22,8 +22,30 @@ export class VideoProcessor {
   private model: any;
 
   constructor(apiKey: string) {
-    this.genai = new GoogleGenerativeAI(apiKey);
+    // Clean and validate the API key
+    const cleanApiKey = this.sanitizeApiKey(apiKey);
+    this.genai = new GoogleGenerativeAI(cleanApiKey);
     this.model = this.genai.getGenerativeModel({ model: 'gemini-1.5-pro' });
+  }
+
+  private sanitizeApiKey(apiKey: string): string {
+    if (!apiKey || typeof apiKey !== 'string') {
+      throw new Error('Invalid API key: must be a non-empty string');
+    }
+
+    // Remove any non-ASCII characters and whitespace
+    const cleaned = apiKey.replace(/[^\x20-\x7E]/g, '').trim();
+    
+    if (!cleaned) {
+      throw new Error('Invalid API key: contains only invalid characters');
+    }
+
+    // Basic format validation for Google API keys
+    if (!cleaned.match(/^AIza[0-9A-Za-z_-]{35}$/)) {
+      console.warn('API key does not match expected Google API key format');
+    }
+
+    return cleaned;
   }
 
   /**
@@ -167,12 +189,26 @@ export class VideoProcessor {
    */
   async testConnection(): Promise<boolean> {
     try {
+      console.log('Testing Gemini API connection...');
       const result = await this.model.generateContent('Test message: please respond with "API connection successful"');
       const response = await result.response;
       const text = response.text();
+      console.log('Gemini API test response:', text);
       return text.toLowerCase().includes('successful');
     } catch (error) {
       console.error('Gemini API test failed:', error);
+      
+      // Provide more specific error messages
+      if (error instanceof Error) {
+        if (error.message.includes('ByteString')) {
+          console.error('API key contains invalid characters. Please ensure your API key is clean ASCII text.');
+        } else if (error.message.includes('401') || error.message.includes('unauthorized')) {
+          console.error('API key is invalid or unauthorized.');
+        } else if (error.message.includes('403') || error.message.includes('forbidden')) {
+          console.error('API key does not have permission to access this service.');
+        }
+      }
+      
       return false;
     }
   }
