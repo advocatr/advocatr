@@ -965,13 +965,29 @@ export function registerRoutes(app: Express): Server {
       const testMessage = "Please respond with 'AI model test successful' to confirm you're working correctly.";
       
       try {
-        const response = await fetch(model.endpoint, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${model.apiKey}`,
-          },
-          body: JSON.stringify({
+        let requestBody: any;
+        let headers: any = {
+          'Content-Type': 'application/json',
+        };
+
+        // Handle different API formats based on provider
+        if (model.provider === 'anthropic') {
+          headers['x-api-key'] = model.apiKey;
+          headers['anthropic-version'] = '2023-06-01';
+          
+          requestBody = {
+            model: model.model,
+            max_tokens: Math.min(model.maxTokens, 100),
+            temperature: model.temperature / 100,
+            messages: [
+              { role: 'user', content: testMessage }
+            ]
+          };
+        } else {
+          // Default to OpenAI format
+          headers['Authorization'] = `Bearer ${model.apiKey}`;
+          
+          requestBody = {
             model: model.model,
             messages: [
               { role: 'system', content: model.systemPrompt },
@@ -979,7 +995,13 @@ export function registerRoutes(app: Express): Server {
             ],
             temperature: model.temperature / 100,
             max_tokens: Math.min(model.maxTokens, 100), // Limit for test
-          }),
+          };
+        }
+
+        const response = await fetch(model.endpoint, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(requestBody),
         });
 
         if (!response.ok) {
@@ -987,7 +1009,14 @@ export function registerRoutes(app: Express): Server {
         }
 
         const data = await response.json();
-        const aiResponse = data.choices?.[0]?.message?.content || 'No response content';
+        let aiResponse;
+        
+        if (model.provider === 'anthropic') {
+          aiResponse = data.content?.[0]?.text || 'No response content';
+        } else {
+          // Default to OpenAI format
+          aiResponse = data.choices?.[0]?.message?.content || 'No response content';
+        }
 
         res.json({ 
           success: true, 
