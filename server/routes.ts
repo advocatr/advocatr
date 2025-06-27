@@ -67,19 +67,20 @@ async function processAiAnalysis(feedbackId: number, videoUrl: string) {
     }
 
     try {
-      // Call the actual AI service
-      const analysisPrompt = `Analyze this advocacy video submission. The video shows a student practicing oral advocacy.
+      // Note: Current AI models cannot directly analyze video files from our storage
+      // This implementation provides text-based feedback as a placeholder
+      const analysisPrompt = `Please provide feedback on an oral advocacy video submission. 
       
-Please provide detailed feedback on the student's performance including:
+Based on typical advocacy performance criteria, provide constructive feedback covering:
 1. Argument structure and legal reasoning
 2. Voice projection and clarity  
 3. Pace and delivery
 4. Use of authorities and precedents
 5. Overall persuasiveness
 
-Please rate the performance from 1-5 (where 1 is poor and 5 is excellent) and provide constructive feedback for improvement.
+Please rate the performance from 1-5 (where 1 is poor and 5 is excellent) and provide detailed, constructive feedback for improvement.
 
-Format your response with a clear rating and detailed feedback.`;
+Note: This is a placeholder analysis as video content analysis requires specialized setup.`;
 
       let requestBody: any;
       let headers: any = {
@@ -137,6 +138,9 @@ Format your response with a clear rating and detailed feedback.`;
         aiContent = data.choices?.[0]?.message?.content || 'Unable to generate feedback';
       }
       
+      // Add disclaimer about video analysis limitations
+      const disclaimerContent = `[Note: This feedback is based on general advocacy principles. Full video analysis capabilities require additional setup for direct video processing.]\n\n${aiContent}`;
+      
       // Extract rating from content (look for various rating patterns)
       const ratingMatch = aiContent.match(/(?:rating|score):\s*(\d+)(?:\/5)?/i) || 
                           aiContent.match(/(\d+)\/5/) ||
@@ -146,16 +150,14 @@ Format your response with a clear rating and detailed feedback.`;
       const extractedRating = ratingMatch ? parseInt(ratingMatch[1]) : 3;
       const finalRating = Math.max(1, Math.min(5, extractedRating)); // Ensure 1-5 range
 
-      // Calculate confidence score based on response length and rating extraction
-      const confidenceScore = ratingMatch ? 
-        Math.min(95, 75 + Math.floor(aiContent.length / 50)) : 
-        Math.min(80, 60 + Math.floor(aiContent.length / 50));
+      // Lower confidence score since we're not actually analyzing the video
+      const confidenceScore = 60; // Fixed lower confidence for placeholder analysis
 
       // Update with AI results
       await db
         .update(feedback)
         .set({
-          content: aiContent,
+          content: disclaimerContent,
           rating: finalRating,
           aiAnalysisStatus: "completed",
           aiConfidenceScore: confidenceScore,
@@ -172,7 +174,7 @@ Format your response with a clear rating and detailed feedback.`;
       await db
         .update(feedback)
         .set({
-          content: `[AI Analysis Failed - Mock Response]\n\n${mockFeedback.content}`,
+          content: `[AI Analysis - Mock Response Due to Technical Issue]\n\n${mockFeedback.content}`,
           rating: mockFeedback.rating,
           aiAnalysisStatus: "completed",
           aiConfidenceScore: mockFeedback.confidenceScore,
