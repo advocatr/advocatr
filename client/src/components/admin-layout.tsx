@@ -33,6 +33,11 @@ export function AdminLayout({ children }: AdminLayoutProps) {
       icon: Users,
     },
     {
+      name: "AI Config",
+      href: "/admin/ai-config",
+      icon: LayoutGrid,
+    },
+    {
       name: "Tools",
       href: "/admin/tools",
       icon: LayoutGrid,
