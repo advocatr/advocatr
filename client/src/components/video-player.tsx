@@ -105,16 +105,45 @@ export default function VideoPlayer({
 
       // Setup preview
       if (previewVideoRef.current) {
-        previewVideoRef.current.srcObject = stream;
-        previewVideoRef.current.muted = true;
+        const videoElement = previewVideoRef.current;
         
-        try {
-          await previewVideoRef.current.play();
-          console.log("Preview video started successfully");
-        } catch (playError) {
-          console.error("Preview play failed:", playError);
-          throw new Error("Failed to start video preview");
-        }
+        // Reset any existing stream
+        videoElement.srcObject = null;
+        
+        // Set up event listeners before setting the stream
+        const onLoadedMetadata = () => {
+          console.log("Video metadata loaded, attempting to play");
+          videoElement.play().catch(e => console.error("Play failed after metadata:", e));
+        };
+        
+        const onCanPlay = () => {
+          console.log("Video can play");
+        };
+        
+        const onError = (e: Event) => {
+          console.error("Video element error:", e);
+        };
+        
+        videoElement.addEventListener('loadedmetadata', onLoadedMetadata);
+        videoElement.addEventListener('canplay', onCanPlay);
+        videoElement.addEventListener('error', onError);
+        
+        // Set video properties
+        videoElement.muted = true;
+        videoElement.autoplay = true;
+        videoElement.playsInline = true;
+        
+        // Set the stream
+        videoElement.srcObject = stream;
+        
+        // Clean up event listeners after a timeout
+        setTimeout(() => {
+          videoElement.removeEventListener('loadedmetadata', onLoadedMetadata);
+          videoElement.removeEventListener('canplay', onCanPlay);
+          videoElement.removeEventListener('error', onError);
+        }, 5000);
+        
+        console.log("Preview video setup completed");
       }
 
       setIsInitialized(true);
@@ -266,8 +295,12 @@ export default function VideoPlayer({
             autoPlay
             muted
             playsInline
+            controls={false}
             className="w-full h-64 object-cover"
             style={{ transform: "scaleX(-1)" }}
+            onError={(e) => console.error("Video element error:", e)}
+            onLoadStart={() => console.log("Video load started")}
+            onLoadedData={() => console.log("Video data loaded")}
           />
         ) : (
           <video
