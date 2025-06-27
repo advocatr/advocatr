@@ -13,9 +13,13 @@ import fs from "fs";
 import { VideoProcessor } from "./video-processor";
 
 const randomBytesAsync = promisify(randomBytes);
-const objectStorage = new Client({
-  bucketId: "replit-objstore-416e6fe5-4969-41e5-8291-f6fcbca88b84"
-});
+
+// Debug object storage configuration
+console.log("Object Storage Environment Variables:");
+console.log("REPLIT_OBJECT_STORAGE_BUCKET_ID:", process.env.REPLIT_OBJECT_STORAGE_BUCKET_ID);
+console.log("REPLIT_DB_URL:", process.env.REPLIT_DB_URL ? "Set" : "Not set");
+
+const objectStorage = new Client();
 
 async function generateResetToken(userId: number) {
   const token = (await randomBytesAsync(32)).toString('hex');
