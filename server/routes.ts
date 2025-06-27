@@ -19,22 +19,14 @@ console.log("Object Storage Environment Variables:");
 console.log("REPLIT_OBJECT_STORAGE_BUCKET_ID:", process.env.REPLIT_OBJECT_STORAGE_BUCKET_ID);
 console.log("REPLIT_DB_URL:", process.env.REPLIT_DB_URL ? "Set" : "Not set");
 
-// Read bucket ID from .replit file configuration
-const BUCKET_ID = "replit-objstore-24e48890-f9cb-42ef-ad72-11bb3f26af45";
-console.log("Using explicit bucket ID:", BUCKET_ID);
-
-// Initialize object storage with explicit configuration
+// Initialize object storage client (auto-detects bucket from .replit config)
 let objectStorage: Client;
 try {
-  objectStorage = new Client({
-    bucketId: BUCKET_ID
-  });
+  objectStorage = new Client();
   console.log("Object Storage client initialized successfully");
 } catch (initError) {
   console.error("Failed to initialize Object Storage client:", initError);
-  // Try without bucket ID as fallback
-  objectStorage = new Client();
-  console.log("Initialized Object Storage client without explicit bucket ID");
+  throw new Error("Object Storage initialization failed");
 }
 
 async function generateResetToken(userId: number) {
