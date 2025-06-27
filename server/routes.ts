@@ -68,7 +68,7 @@ async function processAiAnalysis(feedbackId: number, videoUrl: string) {
 
     try {
       // Call the actual AI service
-      const analysisPrompt = `Analyze this advocacy video submission. The video URL is: ${videoUrl}
+      const analysisPrompt = `Analyze this advocacy video submission. The video shows a student practicing oral advocacy.
       
 Please provide detailed feedback on the student's performance including:
 1. Argument structure and legal reasoning
@@ -77,15 +77,33 @@ Please provide detailed feedback on the student's performance including:
 4. Use of authorities and precedents
 5. Overall persuasiveness
 
-Rate the performance from 1-5 and provide constructive feedback for improvement.`;
+Please rate the performance from 1-5 (where 1 is poor and 5 is excellent) and provide constructive feedback for improvement.
 
-      const response = await fetch(defaultModel.endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${defaultModel.apiKey}`,
-        },
-        body: JSON.stringify({
+Format your response with a clear rating and detailed feedback.`;
+
+      let requestBody: any;
+      let headers: any = {
+        'Content-Type': 'application/json',
+      };
+
+      // Handle different API formats based on provider
+      if (defaultModel.provider === 'anthropic') {
+        headers['x-api-key'] = defaultModel.apiKey;
+        headers['anthropic-version'] = '2023-06-01';
+        
+        requestBody = {
+          model: defaultModel.model,
+          max_tokens: defaultModel.maxTokens,
+          temperature: defaultModel.temperature / 100,
+          messages: [
+            { role: 'user', content: `${defaultModel.systemPrompt}\n\n${analysisPrompt}` }
+          ]
+        };
+      } else {
+        // Default to OpenAI format
+        headers['Authorization'] = `Bearer ${defaultModel.apiKey}`;
+        
+        requestBody = {
           model: defaultModel.model,
           messages: [
             { role: 'system', content: defaultModel.systemPrompt },
@@ -93,22 +111,45 @@ Rate the performance from 1-5 and provide constructive feedback for improvement.
           ],
           temperature: defaultModel.temperature / 100,
           max_tokens: defaultModel.maxTokens,
-        }),
+        };
+      }
+
+      console.log(`Making AI request to ${defaultModel.provider} model ${defaultModel.model}`);
+
+      const response = await fetch(defaultModel.endpoint, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
-        throw new Error(`AI API request failed: ${response.status} ${response.statusText}`);
+        const errorText = await response.text();
+        throw new Error(`AI API request failed: ${response.status} ${response.statusText} - ${errorText}`);
       }
 
       const data = await response.json();
-      const aiContent = data.choices?.[0]?.message?.content || 'Unable to generate feedback';
+      let aiContent;
       
-      // Extract rating from content (simple approach - look for "Rating: X" or "X/5")
+      if (defaultModel.provider === 'anthropic') {
+        aiContent = data.content?.[0]?.text || 'Unable to generate feedback';
+      } else {
+        // Default to OpenAI format
+        aiContent = data.choices?.[0]?.message?.content || 'Unable to generate feedback';
+      }
+      
+      // Extract rating from content (look for various rating patterns)
       const ratingMatch = aiContent.match(/(?:rating|score):\s*(\d+)(?:\/5)?/i) || 
                           aiContent.match(/(\d+)\/5/) ||
-                          aiContent.match(/(\d+)\s*out\s*of\s*5/i);
+                          aiContent.match(/(\d+)\s*out\s*of\s*5/i) ||
+                          aiContent.match(/rate(?:d|s)?\s*(?:this|the)?\s*(?:performance|submission)?\s*(?:at|as)?\s*(\d+)/i);
+      
       const extractedRating = ratingMatch ? parseInt(ratingMatch[1]) : 3;
       const finalRating = Math.max(1, Math.min(5, extractedRating)); // Ensure 1-5 range
+
+      // Calculate confidence score based on response length and rating extraction
+      const confidenceScore = ratingMatch ? 
+        Math.min(95, 75 + Math.floor(aiContent.length / 50)) : 
+        Math.min(80, 60 + Math.floor(aiContent.length / 50));
 
       // Update with AI results
       await db
@@ -117,11 +158,11 @@ Rate the performance from 1-5 and provide constructive feedback for improvement.
           content: aiContent,
           rating: finalRating,
           aiAnalysisStatus: "completed",
-          aiConfidenceScore: 85, // Could be returned by AI in future
+          aiConfidenceScore: confidenceScore,
         })
         .where(eq(feedback.id, feedbackId));
 
-      console.log(`AI analysis completed for feedback ${feedbackId} using model ${defaultModel.name}`);
+      console.log(`AI analysis completed for feedback ${feedbackId} using model ${defaultModel.name} (rating: ${finalRating}, confidence: ${confidenceScore}%)`);
     } catch (aiError) {
       console.error("AI API call failed, falling back to mock:", aiError);
       
@@ -131,7 +172,7 @@ Rate the performance from 1-5 and provide constructive feedback for improvement.
       await db
         .update(feedback)
         .set({
-          content: mockFeedback.content,
+          content: `[AI Analysis Failed - Mock Response]\n\n${mockFeedback.content}`,
           rating: mockFeedback.rating,
           aiAnalysisStatus: "completed",
           aiConfidenceScore: mockFeedback.confidenceScore,

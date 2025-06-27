@@ -31,11 +31,25 @@ interface Progress {
   feedback: Feedback[];
 }
 
+interface AIFeedback {
+  id: number;
+  progressId: number;
+  content: string;
+  rating: number;
+  isAiGenerated: boolean;
+  aiAnalysisStatus: "pending" | "processing" | "completed" | "failed";
+  aiConfidenceScore: number | null;
+  createdAt: string;
+}
+
 interface Feedback {
   id: number;
   content: string;
   rating: number;
   createdAt: string;
+  isAiGenerated?: boolean;
+  aiAnalysisStatus?: "pending" | "processing" | "completed" | "failed";
+  aiConfidenceScore?: number | null;
 }
 
 export default function Exercise() {
@@ -66,6 +80,24 @@ export default function Exercise() {
         throw new Error("Failed to fetch progress");
       }
       return response.json();
+    },
+  });
+
+  // Fetch AI feedback for this progress
+  const { data: aiFeedback, refetch: refetchAiFeedback } = useQuery({
+    queryKey: ["/api/ai-feedback", progress?.id],
+    queryFn: async () => {
+      if (!progress?.id) return null;
+      const response = await fetch(`/api/ai-feedback/${progress.id}/status`);
+      if (!response.ok) {
+        throw new Error("Failed to fetch AI feedback");
+      }
+      return response.json();
+    },
+    enabled: !!progress?.id,
+    refetchInterval: (data) => {
+      // Refetch every 3 seconds if AI analysis is processing
+      return data?.aiAnalysisStatus === "processing" ? 3000 : false;
     },
   });
 
@@ -245,6 +277,61 @@ export default function Exercise() {
               Exercise completed
             </div>
 
+            {/* AI Feedback Section */}
+            {aiFeedback && (
+              <div className="mb-6">
+                <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+                  🤖 AI Feedback
+                  {aiFeedback.aiConfidenceScore && (
+                    <span className="text-sm text-blue-600 bg-blue-100 px-2 py-1 rounded">
+                      Confidence: {aiFeedback.aiConfidenceScore}%
+                    </span>
+                  )}
+                </h3>
+                
+                {aiFeedback.aiAnalysisStatus === "processing" && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <div className="flex items-center space-x-2">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                      <span className="text-blue-800">AI is analyzing your video submission...</span>
+                    </div>
+                  </div>
+                )}
+
+                {aiFeedback.aiAnalysisStatus === "completed" && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <div className="flex justify-between items-center mb-3">
+                      <div className="font-medium text-blue-900">
+                        AI Rating: {aiFeedback.rating}/5
+                      </div>
+                      <div className="text-sm text-blue-600">
+                        {new Date(aiFeedback.createdAt).toLocaleDateString()}
+                      </div>
+                    </div>
+                    <div className="text-blue-800 whitespace-pre-wrap">
+                      {aiFeedback.content}
+                    </div>
+                  </div>
+                )}
+
+                {aiFeedback.aiAnalysisStatus === "failed" && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                    <div className="text-red-800">
+                      ❌ AI analysis failed. Please contact support if this issue persists.
+                    </div>
+                  </div>
+                )}
+
+                {aiFeedback.aiAnalysisStatus === "pending" && (
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                    <div className="text-yellow-800">
+                      ⏳ AI analysis is queued and will begin shortly...
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             <Dialog>
               <DialogTrigger asChild>
                 <Button>
@@ -277,7 +364,7 @@ export default function Exercise() {
                             </div>
                             {feedback.isAiGenerated && (
                               <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full">
-                                AI Generated
+                                🤖 AI Generated
                               </span>
                             )}
                             {feedback.aiConfidenceScore && (
@@ -290,14 +377,15 @@ export default function Exercise() {
                             {new Date(feedback.createdAt).toLocaleDateString()}
                           </div>
                         </div>
-                        <p className={`${
+                        <p className={`whitespace-pre-wrap ${
                           feedback.isAiGenerated ? "text-blue-800" : "text-gray-700"
                         }`}>
                           {feedback.content}
                         </p>
                         {feedback.aiAnalysisStatus === "processing" && (
-                          <div className="mt-2 text-blue-600 text-sm">
-                            ⏳ Analyzing video...
+                          <div className="mt-2 text-blue-600 text-sm flex items-center gap-2">
+                            <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600"></div>
+                            Analyzing video...
                           </div>
                         )}
                         {feedback.aiAnalysisStatus === "failed" && (
