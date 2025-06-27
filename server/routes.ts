@@ -883,7 +883,7 @@ export function registerRoutes(app: Express): Server {
       const modelId = parseInt(req.params.id);
       const { name, provider, apiKey, endpoint, model, temperature, maxTokens, systemPrompt, isActive, isDefault } = req.body;
 
-      if (!name || !provider || !apiKey || !endpoint || !model || !systemPrompt) {
+      if (!name || !provider || !endpoint || !model || !systemPrompt) {
         return res.status(400).json({ message: "All required fields must be provided" });
       }
 
@@ -895,21 +895,28 @@ export function registerRoutes(app: Express): Server {
           .where(eq(aiModels.isDefault, true));
       }
 
+      // Prepare update object - only include apiKey if provided
+      const updateData: any = {
+        name,
+        provider,
+        endpoint,
+        model,
+        temperature: Math.round(temperature * 100), // Store as integer
+        maxTokens,
+        systemPrompt,
+        isActive: isActive !== undefined ? isActive : true,
+        isDefault: isDefault !== undefined ? isDefault : false,
+        updatedAt: new Date(),
+      };
+
+      // Only update API key if provided
+      if (apiKey && apiKey.trim()) {
+        updateData.apiKey = apiKey;
+      }
+
       const [updatedModel] = await db
         .update(aiModels)
-        .set({
-          name,
-          provider,
-          apiKey,
-          endpoint,
-          model,
-          temperature: Math.round(temperature * 100), // Store as integer
-          maxTokens,
-          systemPrompt,
-          isActive: isActive !== undefined ? isActive : true,
-          isDefault: isDefault !== undefined ? isDefault : false,
-          updatedAt: new Date(),
-        })
+        .set(updateData)
         .where(eq(aiModels.id, modelId))
         .returning();
 

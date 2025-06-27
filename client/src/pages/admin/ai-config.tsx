@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -237,8 +236,14 @@ export default function AIConfigPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
     if (editingModel) {
-      updateMutation.mutate({ id: editingModel.id, data: formData });
+      // If API key is empty during edit, don't update it
+      const updateData = { ...formData };
+      if (!formData.apiKey.trim()) {
+        delete updateData.apiKey;
+      }
+      updateMutation.mutate({ id: editingModel.id, data: updateData });
     } else {
       createMutation.mutate(formData);
     }
@@ -527,7 +532,7 @@ export default function AIConfigPage() {
                               type="password"
                               value={formData.apiKey}
                               onChange={(e) => setFormData({ ...formData, apiKey: e.target.value })}
-                              required
+                              placeholder="Leave empty to keep existing key"
                             />
                           </div>
 
