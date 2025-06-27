@@ -23,9 +23,19 @@ console.log("REPLIT_DB_URL:", process.env.REPLIT_DB_URL ? "Set" : "Not set");
 const BUCKET_ID = "replit-objstore-24e48890-f9cb-42ef-ad72-11bb3f26af45";
 console.log("Using explicit bucket ID:", BUCKET_ID);
 
-const objectStorage = new Client({
-  bucketId: BUCKET_ID
-});
+// Initialize object storage with explicit configuration
+let objectStorage: Client;
+try {
+  objectStorage = new Client({
+    bucketId: BUCKET_ID
+  });
+  console.log("Object Storage client initialized successfully");
+} catch (initError) {
+  console.error("Failed to initialize Object Storage client:", initError);
+  // Try without bucket ID as fallback
+  objectStorage = new Client();
+  console.log("Initialized Object Storage client without explicit bucket ID");
+}
 
 async function generateResetToken(userId: number) {
   const token = (await randomBytesAsync(32)).toString('hex');
@@ -723,14 +733,34 @@ export function registerRoutes(app: Express): Server {
 
       console.log("Uploading to object storage:", filename);
 
-      // Upload to object storage
-      await objectStorage.uploadFromBytes(filename, fileBuffer);
+      // Upload to object storage with error handling
+      try {
+        const uploadResult = await objectStorage.uploadFromBytes(filename, fileBuffer);
+        console.log("Upload result:", JSON.stringify(uploadResult, null, 2));
+        
+        if (!uploadResult.ok) {
+          throw new Error(`Upload failed: ${uploadResult.error?.message || 'Unknown error'}`);
+        }
 
-      // Generate a URL for the uploaded video
-      const videoUrl = `/api/video/${encodeURIComponent(filename)}`;
+        // Generate a URL for the uploaded video
+        const videoUrl = `/api/video/${encodeURIComponent(filename)}`;
 
-      console.log("Upload successful:", videoUrl);
-      res.json({ videoUrl });
+        console.log("Upload successful:", videoUrl);
+        res.json({ videoUrl });
+      } catch (uploadError) {
+        console.error("Object storage upload failed:", uploadError);
+        
+        // Check if this is the "Error code undefined" issue
+        if (uploadError.message.includes('Error code undefined')) {
+          return res.status(503).json({ 
+            message: "Object storage service is currently unavailable. Please try again later.", 
+            error: "Service temporarily unavailable",
+            retry: true 
+          });
+        }
+        
+        throw uploadError;
+      }
     } catch (error) {
       console.error("Error uploading video:", error);
       res.status(500).json({ 
@@ -879,11 +909,36 @@ export function registerRoutes(app: Express): Server {
     }
 
     try {
-      console.log("Running object storage health check...");
+      console.log("Running comprehensive object storage health check...");
       
-      // Test basic list operation
-      const listResult = await objectStorage.list();
-      console.log("List operation result:", JSON.stringify(listResult, null, 2));
+      // Check environment variables
+      const envStatus = {
+        REPLIT_OBJECT_STORAGE_BUCKET_ID: process.env.REPLIT_OBJECT_STORAGE_BUCKET_ID || "Not set",
+        REPLIT_DB_URL: process.env.REPLIT_DB_URL ? "Set" : "Not set",
+        explicitBucketId: BUCKET_ID
+      };
+      console.log("Environment status:", envStatus);
+      
+      // Try to create a fresh client
+      let freshClientTest;
+      try {
+        const freshClient = new Client();
+        freshClientTest = await freshClient.list();
+        console.log("Fresh client test result:", JSON.stringify(freshClientTest, null, 2));
+      } catch (freshClientError) {
+        console.error("Fresh client test failed:", freshClientError);
+        freshClientTest = { error: freshClientError.message };
+      }
+      
+      // Test basic list operation with existing client
+      let listResult;
+      try {
+        listResult = await objectStorage.list();
+        console.log("Existing client list result:", JSON.stringify(listResult, null, 2));
+      } catch (listError) {
+        console.error("List operation failed:", listError);
+        listResult = { error: listError.message };
+      }
       
       // Test upload with a small file
       const testData = Buffer.from("test-data-" + Date.now());
@@ -895,24 +950,34 @@ export function registerRoutes(app: Express): Server {
         uploadResult = await objectStorage.uploadFromBytes(testFilename, testData);
         console.log("Upload test result:", JSON.stringify(uploadResult, null, 2));
         
-        if (uploadResult.ok) {
-          downloadResult = await objectStorage.downloadAsBytes(testFilename);
-          console.log("Download test result:", JSON.stringify(downloadResult, null, 2));
+        if (uploadResult && uploadResult.ok) {
+          try {
+            downloadResult = await objectStorage.downloadAsBytes(testFilename);
+            console.log("Download test result:", JSON.stringify(downloadResult, null, 2));
+          } catch (downloadError) {
+            downloadResult = { error: downloadError.message };
+          }
           
-          deleteResult = await objectStorage.delete(testFilename);
-          console.log("Delete test result:", JSON.stringify(deleteResult, null, 2));
+          try {
+            deleteResult = await objectStorage.delete(testFilename);
+            console.log("Delete test result:", JSON.stringify(deleteResult, null, 2));
+          } catch (deleteError) {
+            deleteResult = { error: deleteError.message };
+          }
         }
       } catch (testError) {
         console.error("Object storage test operation failed:", testError);
+        uploadResult = { error: testError.message };
       }
       
       res.json({
         timestamp: new Date().toISOString(),
+        environment: envStatus,
+        freshClientTest,
         listOperation: listResult,
         uploadTest: uploadResult,
         downloadTest: downloadResult,
-        deleteTest: deleteResult,
-        bucketId: process.env.REPLIT_OBJECT_STORAGE_BUCKET_ID || "Not set"
+        deleteTest: deleteResult
       });
     } catch (error) {
       console.error("Storage health check error:", error);
