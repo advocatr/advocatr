@@ -1,0 +1,75 @@
+import google.generativeai as genai
+import cv2 # OpenCV library
+import base64
+import os
+
+# 1. CONFIGURE THE API
+# Best practice: store the key in an environment variable
+# os.environ['GOOGLE_API_KEY'] = "YOUR_GEMINI_API_KEY"
+genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
+
+# Define the model to use
+model = genai.GenerativeModel('gemini-pro-vision')
+
+# --- Your Application Logic Would Go Here ---
+
+# The prompt that is already in your application
+your_prompt = """
+You are a public speaking coach. This video shows a person giving a short presentation.
+Analyze their body language, posture, and hand gestures across the video.
+Provide three concrete, actionable tips for them to improve their stage presence.
+"""
+
+video_file_path = "path/to/your/video.mp4"
+
+# 2. PROCESS THE VIDEO INTO FRAMES
+def extract_frames(video_path, interval_sec=2, max_frames=20):
+    """Extracts frames from a video file at a given interval."""
+    print("Extracting frames...")
+    frames = []
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        raise IOError("Cannot open video file")
+
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    frame_interval = int(fps * interval_sec)
+    frame_count = 0
+
+    while cap.isOpened() and len(frames) < max_frames:
+        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_count)
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        # Encode frame to JPEG and then to Base64
+        _, buffer = cv2.imencode('.jpg', frame)
+        base64_frame = base64.b64encode(buffer).decode('utf-8')
+        
+        frames.append({
+            "mime_type": "image/jpeg",
+            "data": base64_frame
+        })
+        frame_count += frame_interval
+        
+    cap.release()
+    print(f"Extracted {len(frames)} frames.")
+    return frames
+
+# 3. PREPARE THE API REQUEST
+try:
+    image_parts = extract_frames(video_file_path)
+
+    # Combine the text prompt with the image frames
+    prompt_parts = [your_prompt] + image_parts
+
+    # 4. MAKE THE API CALL
+    print("Sending request to Gemini...")
+    response = model.generate_content(prompt_parts)
+
+    # Display the feedback
+    print("\n--- Gemini's Feedback ---")
+    print(response.text)
+    print("-------------------------\n")
+
+except Exception as e:
+    print(f"An error occurred: {e}")
