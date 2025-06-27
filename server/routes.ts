@@ -100,6 +100,22 @@ Note: This is a placeholder analysis as video content analysis requires speciali
             { role: 'user', content: `${defaultModel.systemPrompt}\n\n${analysisPrompt}` }
           ]
         };
+      } else if (defaultModel.provider === 'google' || defaultModel.provider === 'gemini') {
+        headers['Authorization'] = `Bearer ${defaultModel.apiKey}`;
+        
+        requestBody = {
+          contents: [
+            {
+              parts: [
+                { text: `${defaultModel.systemPrompt}\n\n${analysisPrompt}` }
+              ]
+            }
+          ],
+          generationConfig: {
+            temperature: defaultModel.temperature / 100,
+            maxOutputTokens: defaultModel.maxTokens,
+          }
+        };
       } else {
         // Default to OpenAI format
         headers['Authorization'] = `Bearer ${defaultModel.apiKey}`;
@@ -133,6 +149,8 @@ Note: This is a placeholder analysis as video content analysis requires speciali
       
       if (defaultModel.provider === 'anthropic') {
         aiContent = data.content?.[0]?.text || 'Unable to generate feedback';
+      } else if (defaultModel.provider === 'google' || defaultModel.provider === 'gemini') {
+        aiContent = data.candidates?.[0]?.content?.parts?.[0]?.text || 'Unable to generate feedback';
       } else {
         // Default to OpenAI format
         aiContent = data.choices?.[0]?.message?.content || 'Unable to generate feedback';
@@ -1053,6 +1071,22 @@ export function registerRoutes(app: Express): Server {
               { role: 'user', content: testMessage }
             ]
           };
+        } else if (model.provider === 'google' || model.provider === 'gemini') {
+          headers['Authorization'] = `Bearer ${model.apiKey}`;
+          
+          requestBody = {
+            contents: [
+              {
+                parts: [
+                  { text: `${model.systemPrompt}\n\n${testMessage}` }
+                ]
+              }
+            ],
+            generationConfig: {
+              temperature: model.temperature / 100,
+              maxOutputTokens: Math.min(model.maxTokens, 100),
+            }
+          };
         } else {
           // Default to OpenAI format
           headers['Authorization'] = `Bearer ${model.apiKey}`;
@@ -1083,6 +1117,8 @@ export function registerRoutes(app: Express): Server {
         
         if (model.provider === 'anthropic') {
           aiResponse = data.content?.[0]?.text || 'No response content';
+        } else if (model.provider === 'google' || model.provider === 'gemini') {
+          aiResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || 'No response content';
         } else {
           // Default to OpenAI format
           aiResponse = data.choices?.[0]?.message?.content || 'No response content';
