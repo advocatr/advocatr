@@ -289,7 +289,7 @@ export default function Exercise() {
                     </span>
                   )}
                 </h3>
-                
+
                 {aiFeedback.aiAnalysisStatus === "processing" && (
                   <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                     <div className="flex items-center space-x-2">
@@ -332,75 +332,6 @@ export default function Exercise() {
                 )}
               </div>
             )}
-
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button>
-                  <MessageCircle className="mr-2 h-4 w-4" />
-                  {progress.feedback?.length
-                    ? "View & Add Feedback"
-                    : "Add Feedback"}
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-[500px]">
-                <DialogHeader>
-                  <DialogTitle>Exercise Feedback</DialogTitle>
-                </DialogHeader>
-                {progress.feedback?.length > 0 && (
-                  <div className="mb-6 space-y-4">
-                    <h3 className="font-semibold">Previous Feedback</h3>
-                    {progress.feedback.map((feedback) => (
-                      <div
-                        key={feedback.id}
-                        className={`p-4 rounded-lg ${
-                          feedback.isAiGenerated 
-                            ? "bg-blue-50 border border-blue-200" 
-                            : "bg-gray-50"
-                        }`}
-                      >
-                        <div className="flex justify-between items-center mb-2">
-                          <div className="flex items-center gap-2">
-                            <div className="font-medium">
-                              Rating: {feedback.rating}/5
-                            </div>
-                            {feedback.isAiGenerated && (
-                              <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full">
-                                🤖 AI Generated
-                              </span>
-                            )}
-                            {feedback.aiConfidenceScore && (
-                              <span className="text-xs text-blue-600">
-                                Confidence: {feedback.aiConfidenceScore}%
-                              </span>
-                            )}
-                          </div>
-                          <div className="text-sm text-gray-500">
-                            {new Date(feedback.createdAt).toLocaleDateString()}
-                          </div>
-                        </div>
-                        <p className={`whitespace-pre-wrap ${
-                          feedback.isAiGenerated ? "text-blue-800" : "text-gray-700"
-                        }`}>
-                          {feedback.content}
-                        </p>
-                        {feedback.aiAnalysisStatus === "processing" && (
-                          <div className="mt-2 text-blue-600 text-sm flex items-center gap-2">
-                            <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600"></div>
-                            Analyzing video...
-                          </div>
-                        )}
-                        {feedback.aiAnalysisStatus === "failed" && (
-                          <div className="mt-2 text-red-600 text-sm">
-                            ❌ Analysis failed
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <FeedbackForm progressId={progress.id} />
-              </DialogContent>
-            </Dialog>
           </div>
         )}
       </div>
