@@ -690,6 +690,48 @@ export function registerRoutes(app: Express): Server {
     res.json(aiFeedback || null);
   });
 
+  // Delete video from object storage
+  app.post("/api/delete-video", async (req, res) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+
+    try {
+      const { videoUrl } = req.body;
+      
+      if (!videoUrl) {
+        return res.status(400).json({ message: "Video URL is required" });
+      }
+
+      // Extract filename from the video URL
+      // URL format: /api/video/videos%2F1_1751031362652.webm
+      const urlMatch = videoUrl.match(/\/api\/video\/(.+)$/);
+      if (!urlMatch) {
+        return res.status(400).json({ message: "Invalid video URL format" });
+      }
+
+      const filename = decodeURIComponent(urlMatch[1]);
+      console.log("Attempting to delete video:", filename);
+
+      // Delete from object storage
+      const deleteResult = await objectStorage.delete(filename);
+      
+      if (deleteResult.ok) {
+        console.log("Video deleted successfully:", filename);
+        res.json({ message: "Video deleted successfully" });
+      } else {
+        console.error("Failed to delete video:", deleteResult.value);
+        res.status(500).json({ message: "Failed to delete video from storage" });
+      }
+    } catch (error) {
+      console.error("Error deleting video:", error);
+      res.status(500).json({ 
+        message: "Failed to delete video", 
+        error: error instanceof Error ? error.message : "Unknown error" 
+      });
+    }
+  });
+
   // Tools API endpoints
   app.get("/api/tools", async (req, res) => {
     try {

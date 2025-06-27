@@ -195,7 +195,22 @@ export default function Exercise() {
             {progress?.videoUrl && !showRecorder ? (
               <VideoPlayer 
                 url={progress.videoUrl} 
-                onRerecord={() => setShowRecorder(true)}
+                onRerecord={async () => {
+                  // Delete the previous video before allowing rerecord
+                  if (progress.videoUrl) {
+                    try {
+                      await fetch(`/api/delete-video`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ videoUrl: progress.videoUrl })
+                      });
+                    } catch (error) {
+                      console.warn('Failed to delete previous video:', error);
+                      // Don't block rerecording if deletion fails
+                    }
+                  }
+                  setShowRecorder(true);
+                }}
               />
             ) : (
               <VideoRecorder 
