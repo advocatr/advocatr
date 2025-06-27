@@ -51,11 +51,55 @@ export default function VideoPlayer({
       setError(null);
       cleanup();
 
+      // Check if mediaDevices is available
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error("MediaDevices API not available");
+      }
+
+      // Check current permissions
+      try {
+        const cameraPermission = await navigator.permissions.query({ name: 'camera' as PermissionName });
+        const microphonePermission = await navigator.permissions.query({ name: 'microphone' as PermissionName });
+        
+        console.log("Permission states:", {
+          camera: cameraPermission.state,
+          microphone: microphonePermission.state,
+          userAgent: navigator.userAgent,
+          isSecureContext: window.isSecureContext,
+          protocol: window.location.protocol
+        });
+      } catch (permError) {
+        console.log("Permission query failed (this is normal in some browsers):", permError);
+      }
+
+      console.log("Requesting media stream...");
+      
       // Get basic media stream
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: true,
+        video: {
+          width: { ideal: 640 },
+          height: { ideal: 480 }
+        },
         audio: true,
       });
+
+      console.log("Stream obtained:", {
+        videoTracks: stream.getVideoTracks().length,
+        audioTracks: stream.getAudioTracks().length,
+        active: stream.active
+      });
+
+      // Verify tracks are active
+      const videoTracks = stream.getVideoTracks();
+      const audioTracks = stream.getAudioTracks();
+      
+      if (videoTracks.length === 0) {
+        throw new Error("No video track available");
+      }
+      
+      if (audioTracks.length === 0) {
+        throw new Error("No audio track available");
+      }
 
       streamRef.current = stream;
 
@@ -63,7 +107,14 @@ export default function VideoPlayer({
       if (previewVideoRef.current) {
         previewVideoRef.current.srcObject = stream;
         previewVideoRef.current.muted = true;
-        await previewVideoRef.current.play();
+        
+        try {
+          await previewVideoRef.current.play();
+          console.log("Preview video started successfully");
+        } catch (playError) {
+          console.error("Preview play failed:", playError);
+          throw new Error("Failed to start video preview");
+        }
       }
 
       setIsInitialized(true);
@@ -72,7 +123,24 @@ export default function VideoPlayer({
     } catch (error) {
       console.error("Camera initialization failed:", error);
       cleanup();
-      setError("Failed to access camera. Please check permissions.");
+      
+      let errorMessage = "Failed to access camera. ";
+      
+      if (error instanceof Error) {
+        if (error.name === 'NotAllowedError') {
+          errorMessage += "Permission denied. Please allow camera and microphone access in your browser settings.";
+        } else if (error.name === 'NotFoundError') {
+          errorMessage += "No camera or microphone found.";
+        } else if (error.name === 'NotReadableError') {
+          errorMessage += "Camera is already in use by another application.";
+        } else if (error.name === 'OverconstrainedError') {
+          errorMessage += "Camera constraints could not be satisfied.";
+        } else {
+          errorMessage += error.message;
+        }
+      }
+      
+      setError(errorMessage);
       setIsInitialized(false);
     }
   };
