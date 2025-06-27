@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/dialog";
 import { useState } from "react";
 import { Label } from "@/components/ui/label";
+import { Search } from "lucide-react";
 
 interface Progress {
   id: number;
@@ -66,6 +67,7 @@ export default function AdminProgress() {
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [newPassword, setNewPassword] = useState("");
   const [expandedUsers, setExpandedUsers] = useState<Set<number>>(new Set());
+  const [searchTerm, setSearchTerm] = useState("");
 
   const { data: progress, refetch } = useQuery({
     queryKey: ["/api/admin/progress"],
@@ -77,7 +79,7 @@ export default function AdminProgress() {
   });
 
   // Group progress by user
-  const groupedProgress: UserProgress[] = progress ? 
+  const allGroupedProgress: UserProgress[] = progress ? 
     Object.values(
       progress.reduce((acc: { [key: number]: UserProgress }, p: Progress) => {
         if (!acc[p.userId]) {
@@ -109,6 +111,12 @@ export default function AdminProgress() {
       }, {})
     ).sort((a, b) => a.username.localeCompare(b.username))
     : [];
+
+  // Filter users based on search term
+  const groupedProgress = allGroupedProgress.filter(userProgress =>
+    userProgress.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    userProgress.email.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   const toggleUserExpansion = (userId: number) => {
     const newExpanded = new Set(expandedUsers);
@@ -223,6 +231,15 @@ export default function AdminProgress() {
       <Card>
         <CardHeader>
           <CardTitle>Progress Overview ({groupedProgress.length} Users)</CardTitle>
+          <div className="relative max-w-md">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+            <Input
+              placeholder="Search by username or email..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10"
+            />
+          </div>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
