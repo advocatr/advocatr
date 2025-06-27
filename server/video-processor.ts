@@ -25,7 +25,7 @@ export class VideoProcessor {
     // Clean and validate the API key
     const cleanApiKey = this.sanitizeApiKey(apiKey);
     this.genai = new GoogleGenerativeAI(cleanApiKey);
-    this.model = this.genai.getGenerativeModel({ model: 'gemini-1.5-pro' });
+    this.model = this.genai.getGenerativeModel({ model: 'gemini-1.5-flash' });
   }
 
   private sanitizeApiKey(apiKey: string): string {
