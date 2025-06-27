@@ -946,7 +946,7 @@ export function registerRoutes(app: Express): Server {
         .values({
           name,
           provider,
-          apiKey,```typescript
+          apiKey,
           endpoint,
           model,
           temperature: Math.round(temperature * 100), // Store as integer
