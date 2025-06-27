@@ -740,30 +740,46 @@ export function registerRoutes(app: Express): Server {
       const filename = decodeURIComponent(req.params.filename);
       console.log("Attempting to serve video:", filename);
 
+      // Debug: Check bucket configuration
+      console.log("Object storage bucket ID:", process.env.REPLIT_DB_URL ? "Using DB" : "Using object storage");
+      
       // First check if the file exists by listing files
       try {
+        console.log("Attempting to list object storage contents...");
         const listResult = await objectStorage.list();
-        console.log("Object storage list result:", listResult);
+        console.log("Object storage list result:", JSON.stringify(listResult, null, 2));
+        
         if (listResult.ok && listResult.value) {
           const fileExists = listResult.value.some(item => item.name === filename);
           console.log(`File ${filename} exists in storage:`, fileExists);
           if (!fileExists) {
-            console.log("Available files:", listResult.value.map(item => item.name));
-            throw new Error(`File ${filename} not found in object storage`);
+            console.log("Available files:", listResult.value.map(item => ({ name: item.name, size: item.size })));
+            return res.status(404).json({ 
+              message: "Video file not found", 
+              filename,
+              availableFiles: listResult.value.map(item => item.name) 
+            });
           }
+        } else if (!listResult.ok) {
+          console.error("Object storage list failed:", listResult.error);
+          // Don't fail completely, try to download anyway
         }
       } catch (listError) {
-        console.warn("Could not list object storage contents:", listError);
+        console.error("Object storage list exception:", listError);
+        // Continue with download attempt
       }
 
+      console.log("Attempting to download video data...");
       const videoData = await objectStorage.downloadAsBytes(filename);
-      console.log("Video data received:", {
+      console.log("Raw video data response:", JSON.stringify(videoData, null, 2));
+      console.log("Video data details:", {
         type: typeof videoData,
         constructor: videoData?.constructor?.name,
         isBuffer: Buffer.isBuffer(videoData),
         isUint8Array: videoData instanceof Uint8Array,
         hasLength: 'length' in videoData,
-        length: videoData?.length
+        length: videoData?.length,
+        keys: videoData && typeof videoData === 'object' ? Object.keys(videoData) : null
       });
 
       let buffer: Buffer;
@@ -777,8 +793,21 @@ export function registerRoutes(app: Express): Server {
           console.log("Extracted Buffer from object storage response");
         } else {
           console.error("Object storage error response:", response);
+          console.error("Full error object:", JSON.stringify(response.error, null, 2));
+          
+          // Handle specific error cases
+          if (response.error?.message?.includes('Error code undefined')) {
+            console.error("Object storage service appears to be having issues");
+            return res.status(503).json({ 
+              message: "Video service temporarily unavailable", 
+              error: "Object storage service error",
+              filename,
+              retry: true 
+            });
+          }
+          
           const errorMsg = response.error?.message || 
-                          (typeof response.error === 'string' ? response.error : 'Unknown error') ||
+                          (typeof response.error === 'string' ? response.error : 'Unknown storage error') ||
                           'Object storage request failed';
           throw new Error(`Object storage error: ${errorMsg}`);
         }
@@ -830,6 +859,57 @@ export function registerRoutes(app: Express): Server {
         stack: error?.stack
       });
       res.status(404).json({ message: "Video not found" });
+    }
+  });
+
+  // Object storage health check
+  app.get("/api/debug/storage-health", async (req, res) => {
+    if (!req.isAuthenticated() || !req.user.isAdmin) {
+      return res.status(403).send("Unauthorized");
+    }
+
+    try {
+      console.log("Running object storage health check...");
+      
+      // Test basic list operation
+      const listResult = await objectStorage.list();
+      console.log("List operation result:", JSON.stringify(listResult, null, 2));
+      
+      // Test upload with a small file
+      const testData = Buffer.from("test-data-" + Date.now());
+      const testFilename = `test/health-check-${Date.now()}.txt`;
+      
+      let uploadResult, downloadResult, deleteResult;
+      
+      try {
+        uploadResult = await objectStorage.uploadFromBytes(testFilename, testData);
+        console.log("Upload test result:", JSON.stringify(uploadResult, null, 2));
+        
+        if (uploadResult.ok) {
+          downloadResult = await objectStorage.downloadAsBytes(testFilename);
+          console.log("Download test result:", JSON.stringify(downloadResult, null, 2));
+          
+          deleteResult = await objectStorage.delete(testFilename);
+          console.log("Delete test result:", JSON.stringify(deleteResult, null, 2));
+        }
+      } catch (testError) {
+        console.error("Object storage test operation failed:", testError);
+      }
+      
+      res.json({
+        timestamp: new Date().toISOString(),
+        listOperation: listResult,
+        uploadTest: uploadResult,
+        downloadTest: downloadResult,
+        deleteTest: deleteResult,
+        bucketId: process.env.REPLIT_OBJECT_STORAGE_BUCKET_ID || "Not set"
+      });
+    } catch (error) {
+      console.error("Storage health check error:", error);
+      res.status(500).json({ 
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
     }
   });
 
