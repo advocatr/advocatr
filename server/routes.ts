@@ -740,6 +740,22 @@ export function registerRoutes(app: Express): Server {
       const filename = decodeURIComponent(req.params.filename);
       console.log("Attempting to serve video:", filename);
 
+      // First check if the file exists by listing files
+      try {
+        const listResult = await objectStorage.list();
+        console.log("Object storage list result:", listResult);
+        if (listResult.ok && listResult.value) {
+          const fileExists = listResult.value.some(item => item.name === filename);
+          console.log(`File ${filename} exists in storage:`, fileExists);
+          if (!fileExists) {
+            console.log("Available files:", listResult.value.map(item => item.name));
+            throw new Error(`File ${filename} not found in object storage`);
+          }
+        }
+      } catch (listError) {
+        console.warn("Could not list object storage contents:", listError);
+      }
+
       const videoData = await objectStorage.downloadAsBytes(filename);
       console.log("Video data received:", {
         type: typeof videoData,
@@ -760,8 +776,11 @@ export function registerRoutes(app: Express): Server {
           buffer = response.value[0]; // Get the first (and should be only) Buffer
           console.log("Extracted Buffer from object storage response");
         } else {
-          console.error("Object storage error:", response.error);
-          throw new Error(`Object storage error: ${response.error?.message || 'Unknown error'}`);
+          console.error("Object storage error response:", response);
+          const errorMsg = response.error?.message || 
+                          (typeof response.error === 'string' ? response.error : 'Unknown error') ||
+                          'Object storage request failed';
+          throw new Error(`Object storage error: ${errorMsg}`);
         }
       } else if (videoData && typeof videoData === 'object' && 'value' in videoData) {
         // Handle case where response doesn't have 'ok' field but has 'value'
