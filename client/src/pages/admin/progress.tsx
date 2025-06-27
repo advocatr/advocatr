@@ -1,9 +1,10 @@
+
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { RotateCcw, Key } from "lucide-react";
+import { RotateCcw, Key, ChevronDown, ChevronRight } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -12,6 +13,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import {
   Dialog,
   DialogContent,
@@ -28,6 +34,7 @@ interface Progress {
   exerciseId: number;
   completed: boolean;
   updatedAt: string;
+  videoUrl?: string;
   user: {
     username: string;
     email: string;
@@ -37,11 +44,28 @@ interface Progress {
   };
 }
 
+interface UserProgress {
+  userId: number;
+  username: string;
+  email: string;
+  exercises: {
+    progressId: number;
+    exerciseId: number;
+    exerciseTitle: string;
+    completed: boolean;
+    updatedAt: string;
+    videoUrl?: string;
+  }[];
+  completedCount: number;
+  totalExercises: number;
+}
+
 export default function AdminProgress() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [newPassword, setNewPassword] = useState("");
+  const [expandedUsers, setExpandedUsers] = useState<Set<number>>(new Set());
 
   const { data: progress, refetch } = useQuery({
     queryKey: ["/api/admin/progress"],
@@ -51,6 +75,50 @@ export default function AdminProgress() {
       return response.json();
     },
   });
+
+  // Group progress by user
+  const groupedProgress: UserProgress[] = progress ? 
+    Object.values(
+      progress.reduce((acc: { [key: number]: UserProgress }, p: Progress) => {
+        if (!acc[p.userId]) {
+          acc[p.userId] = {
+            userId: p.userId,
+            username: p.user.username,
+            email: p.user.email,
+            exercises: [],
+            completedCount: 0,
+            totalExercises: 0,
+          };
+        }
+        
+        acc[p.userId].exercises.push({
+          progressId: p.id,
+          exerciseId: p.exerciseId,
+          exerciseTitle: p.exercise.title,
+          completed: p.completed,
+          updatedAt: p.updatedAt,
+          videoUrl: p.videoUrl,
+        });
+        
+        if (p.completed) {
+          acc[p.userId].completedCount++;
+        }
+        acc[p.userId].totalExercises++;
+        
+        return acc;
+      }, {})
+    ).sort((a, b) => a.username.localeCompare(b.username))
+    : [];
+
+  const toggleUserExpansion = (userId: number) => {
+    const newExpanded = new Set(expandedUsers);
+    if (newExpanded.has(userId)) {
+      newExpanded.delete(userId);
+    } else {
+      newExpanded.add(userId);
+    }
+    setExpandedUsers(newExpanded);
+  };
 
   const resetMutation = useMutation({
     mutationFn: async (progressId: number) => {
@@ -154,110 +222,147 @@ export default function AdminProgress() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Progress Overview</CardTitle>
+          <CardTitle>Progress Overview ({groupedProgress.length} Users)</CardTitle>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Candidate</TableHead>
-                <TableHead>Exercise</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Last Updated</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {progress?.map((p: Progress) => (
-                <TableRow key={p.id}>
-                  <TableCell>
-                    <div>
-                      <p className="font-medium">{p.user.username}</p>
-                      <p className="text-sm text-gray-500">{p.user.email}</p>
-                    </div>
-                  </TableCell>
-                  <TableCell>{p.exercise.title}</TableCell>
-                  <TableCell>
-                    {p.completed ? (
-                      <span className="text-green-600">Completed</span>
-                    ) : (
-                      <span className="text-yellow-600">In Progress</span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    {new Date(p.updatedAt).toLocaleDateString()}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => resetMutation.mutate(p.id)}
-                        disabled={resetMutation.isPending}
-                      >
-                        <RotateCcw className="mr-2 h-4 w-4" />
-                        Reset Progress
-                      </Button>
-                      {p.videoUrl && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => triggerAiAnalysis(p.id)}
-                          className="bg-blue-50 text-blue-700 hover:bg-blue-100"
+          <div className="space-y-4">
+            {groupedProgress.map((userProgress) => (
+              <Collapsible key={userProgress.userId}>
+                <div className="border rounded-lg">
+                  <CollapsibleTrigger
+                    className="w-full p-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
+                    onClick={() => toggleUserExpansion(userProgress.userId)}
+                  >
+                    <div className="flex items-center justify-between w-full">
+                      <div className="flex items-center gap-3">
+                        {expandedUsers.has(userProgress.userId) ? (
+                          <ChevronDown className="h-4 w-4" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4" />
+                        )}
+                        <div className="text-left">
+                          <p className="font-medium">{userProgress.username}</p>
+                          <p className="text-sm text-gray-500">{userProgress.email}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <div className="text-right">
+                          <div className="text-sm font-medium">
+                            {userProgress.completedCount}/{userProgress.totalExercises} Completed
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            {Math.round((userProgress.completedCount / userProgress.totalExercises) * 100)}% Complete
+                          </div>
+                        </div>
+                        <Dialog
+                          open={selectedUserId === userProgress.userId}
+                          onOpenChange={(open) => {
+                            if (!open) {
+                              setSelectedUserId(null);
+                              setNewPassword("");
+                            }
+                          }}
                         >
-                          🤖 AI Analysis
-                        </Button>
-                      )}
-                      <Dialog
-                        open={selectedUserId === p.userId}
-                        onOpenChange={(open) => {
-                          if (!open) {
-                            setSelectedUserId(null);
-                            setNewPassword("");
-                          }
-                        }}
-                      >
-                        <DialogTrigger asChild>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setSelectedUserId(p.userId)}
-                          >
-                            <Key className="mr-2 h-4 w-4" />
-                            Reset Password
-                          </Button>
-                        </DialogTrigger>
-                        <DialogContent>
-                          <DialogHeader>
-                            <DialogTitle>Reset User Password</DialogTitle>
-                          </DialogHeader>
-                          <form onSubmit={handleResetPassword} className="space-y-4">
-                            <div className="space-y-2">
-                              <Label htmlFor="new-password">New Password</Label>
-                              <Input
-                                id="new-password"
-                                type="password"
-                                value={newPassword}
-                                onChange={(e) => setNewPassword(e.target.value)}
-                                required
-                              />
-                            </div>
+                          <DialogTrigger asChild>
                             <Button
-                              type="submit"
-                              className="w-full"
-                              disabled={resetPasswordMutation.isPending}
+                              variant="outline"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedUserId(userProgress.userId);
+                              }}
                             >
+                              <Key className="mr-2 h-4 w-4" />
                               Reset Password
                             </Button>
-                          </form>
-                        </DialogContent>
-                      </Dialog>
+                          </DialogTrigger>
+                          <DialogContent>
+                            <DialogHeader>
+                              <DialogTitle>Reset User Password</DialogTitle>
+                            </DialogHeader>
+                            <form onSubmit={handleResetPassword} className="space-y-4">
+                              <div className="space-y-2">
+                                <Label htmlFor="new-password">New Password</Label>
+                                <Input
+                                  id="new-password"
+                                  type="password"
+                                  value={newPassword}
+                                  onChange={(e) => setNewPassword(e.target.value)}
+                                  required
+                                />
+                              </div>
+                              <Button
+                                type="submit"
+                                className="w-full"
+                                disabled={resetPasswordMutation.isPending}
+                              >
+                                Reset Password
+                              </Button>
+                            </form>
+                          </DialogContent>
+                        </Dialog>
+                      </div>
                     </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                  </CollapsibleTrigger>
+                  
+                  <CollapsibleContent>
+                    <div className="border-t">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Exercise</TableHead>
+                            <TableHead>Status</TableHead>
+                            <TableHead>Last Updated</TableHead>
+                            <TableHead>Actions</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {userProgress.exercises.map((exercise) => (
+                            <TableRow key={exercise.progressId}>
+                              <TableCell>{exercise.exerciseTitle}</TableCell>
+                              <TableCell>
+                                {exercise.completed ? (
+                                  <span className="text-green-600 font-medium">Completed</span>
+                                ) : (
+                                  <span className="text-yellow-600 font-medium">In Progress</span>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                {new Date(exercise.updatedAt).toLocaleDateString()}
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex gap-2">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => resetMutation.mutate(exercise.progressId)}
+                                    disabled={resetMutation.isPending}
+                                  >
+                                    <RotateCcw className="mr-2 h-4 w-4" />
+                                    Reset
+                                  </Button>
+                                  {exercise.videoUrl && (
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => triggerAiAnalysis(exercise.progressId)}
+                                      className="bg-blue-50 text-blue-700 hover:bg-blue-100"
+                                    >
+                                      🤖 AI Analysis
+                                    </Button>
+                                  )}
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </CollapsibleContent>
+                </div>
+              </Collapsible>
+            ))}
+          </div>
         </CardContent>
       </Card>
     </div>
