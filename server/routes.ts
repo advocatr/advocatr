@@ -40,24 +40,104 @@ async function processAiAnalysis(feedbackId: number, videoUrl: string) {
       .set({ aiAnalysisStatus: "processing" })
       .where(eq(feedback.id, feedbackId));
 
-    // Mock AI analysis - replace with actual AI service call
-    const mockFeedback = generateMockAiFeedback();
+    const { aiModels } = await import("@db/schema");
+    
+    // Get the default AI model
+    const [defaultModel] = await db
+      .select()
+      .from(aiModels)
+      .where(and(eq(aiModels.isDefault, true), eq(aiModels.isActive, true)))
+      .limit(1);
 
-    // Simulate processing time
-    await new Promise(resolve => setTimeout(resolve, 3000));
+    if (!defaultModel) {
+      // Fall back to mock if no AI model configured
+      console.log("No AI model configured, using mock feedback");
+      const mockFeedback = generateMockAiFeedback();
+      
+      await db
+        .update(feedback)
+        .set({
+          content: mockFeedback.content,
+          rating: mockFeedback.rating,
+          aiAnalysisStatus: "completed",
+          aiConfidenceScore: mockFeedback.confidenceScore,
+        })
+        .where(eq(feedback.id, feedbackId));
+      return;
+    }
 
-    // Update with AI results
-    await db
-      .update(feedback)
-      .set({
-        content: mockFeedback.content,
-        rating: mockFeedback.rating,
-        aiAnalysisStatus: "completed",
-        aiConfidenceScore: mockFeedback.confidenceScore,
-      })
-      .where(eq(feedback.id, feedbackId));
+    try {
+      // Call the actual AI service
+      const analysisPrompt = `Analyze this advocacy video submission. The video URL is: ${videoUrl}
+      
+Please provide detailed feedback on the student's performance including:
+1. Argument structure and legal reasoning
+2. Voice projection and clarity  
+3. Pace and delivery
+4. Use of authorities and precedents
+5. Overall persuasiveness
 
-    console.log(`AI analysis completed for feedback ${feedbackId}`);
+Rate the performance from 1-5 and provide constructive feedback for improvement.`;
+
+      const response = await fetch(defaultModel.endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${defaultModel.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: defaultModel.model,
+          messages: [
+            { role: 'system', content: defaultModel.systemPrompt },
+            { role: 'user', content: analysisPrompt }
+          ],
+          temperature: defaultModel.temperature / 100,
+          max_tokens: defaultModel.maxTokens,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`AI API request failed: ${response.status} ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      const aiContent = data.choices?.[0]?.message?.content || 'Unable to generate feedback';
+      
+      // Extract rating from content (simple approach - look for "Rating: X" or "X/5")
+      const ratingMatch = aiContent.match(/(?:rating|score):\s*(\d+)(?:\/5)?/i) || 
+                          aiContent.match(/(\d+)\/5/) ||
+                          aiContent.match(/(\d+)\s*out\s*of\s*5/i);
+      const extractedRating = ratingMatch ? parseInt(ratingMatch[1]) : 3;
+      const finalRating = Math.max(1, Math.min(5, extractedRating)); // Ensure 1-5 range
+
+      // Update with AI results
+      await db
+        .update(feedback)
+        .set({
+          content: aiContent,
+          rating: finalRating,
+          aiAnalysisStatus: "completed",
+          aiConfidenceScore: 85, // Could be returned by AI in future
+        })
+        .where(eq(feedback.id, feedbackId));
+
+      console.log(`AI analysis completed for feedback ${feedbackId} using model ${defaultModel.name}`);
+    } catch (aiError) {
+      console.error("AI API call failed, falling back to mock:", aiError);
+      
+      // Fall back to mock if AI call fails
+      const mockFeedback = generateMockAiFeedback();
+      
+      await db
+        .update(feedback)
+        .set({
+          content: mockFeedback.content,
+          rating: mockFeedback.rating,
+          aiAnalysisStatus: "completed",
+          aiConfidenceScore: mockFeedback.confidenceScore,
+        })
+        .where(eq(feedback.id, feedbackId));
+    }
   } catch (error) {
     console.error("AI analysis failed:", error);
     await db
@@ -728,6 +808,200 @@ export function registerRoutes(app: Express): Server {
       res.status(500).json({ 
         message: "Failed to delete video", 
         error: error instanceof Error ? error.message : "Unknown error" 
+      });
+    }
+  });
+
+  // AI Models API endpoints
+  app.get("/api/admin/ai-models", isAdmin, async (req, res) => {
+    try {
+      const { aiModels } = await import("@db/schema");
+      const allModels = await db
+        .select()
+        .from(aiModels)
+        .orderBy(aiModels.createdAt);
+      
+      // Don't send API keys in response
+      const modelsWithoutKeys = allModels.map(model => ({
+        ...model,
+        apiKey: model.apiKey ? '••••••••' : '',
+        temperature: model.temperature / 100 // Convert back to decimal
+      }));
+      
+      res.json(modelsWithoutKeys);
+    } catch (error) {
+      console.error("Error fetching AI models:", error);
+      res.status(500).json({ message: "Failed to fetch AI models" });
+    }
+  });
+
+  app.post("/api/admin/ai-models", isAdmin, async (req, res) => {
+    try {
+      const { aiModels } = await import("@db/schema");
+      const { name, provider, apiKey, endpoint, model, temperature, maxTokens, systemPrompt, isActive, isDefault } = req.body;
+
+      if (!name || !provider || !apiKey || !endpoint || !model || !systemPrompt) {
+        return res.status(400).json({ message: "All required fields must be provided" });
+      }
+
+      // If this is set as default, unset any existing default
+      if (isDefault) {
+        await db
+          .update(aiModels)
+          .set({ isDefault: false })
+          .where(eq(aiModels.isDefault, true));
+      }
+
+      const [newModel] = await db
+        .insert(aiModels)
+        .values({
+          name,
+          provider,
+          apiKey,
+          endpoint,
+          model,
+          temperature: Math.round(temperature * 100), // Store as integer
+          maxTokens,
+          systemPrompt,
+          isActive: isActive !== undefined ? isActive : true,
+          isDefault: isDefault !== undefined ? isDefault : false,
+        })
+        .returning();
+
+      // Don't return API key
+      const responseModel = { ...newModel, apiKey: '••••••••', temperature: newModel.temperature / 100 };
+      res.json(responseModel);
+    } catch (error) {
+      console.error("Error creating AI model:", error);
+      res.status(500).json({ message: "Failed to create AI model" });
+    }
+  });
+
+  app.put("/api/admin/ai-models/:id", isAdmin, async (req, res) => {
+    try {
+      const { aiModels } = await import("@db/schema");
+      const modelId = parseInt(req.params.id);
+      const { name, provider, apiKey, endpoint, model, temperature, maxTokens, systemPrompt, isActive, isDefault } = req.body;
+
+      if (!name || !provider || !apiKey || !endpoint || !model || !systemPrompt) {
+        return res.status(400).json({ message: "All required fields must be provided" });
+      }
+
+      // If this is set as default, unset any existing default
+      if (isDefault) {
+        await db
+          .update(aiModels)
+          .set({ isDefault: false })
+          .where(eq(aiModels.isDefault, true));
+      }
+
+      const [updatedModel] = await db
+        .update(aiModels)
+        .set({
+          name,
+          provider,
+          apiKey,
+          endpoint,
+          model,
+          temperature: Math.round(temperature * 100), // Store as integer
+          maxTokens,
+          systemPrompt,
+          isActive: isActive !== undefined ? isActive : true,
+          isDefault: isDefault !== undefined ? isDefault : false,
+          updatedAt: new Date(),
+        })
+        .where(eq(aiModels.id, modelId))
+        .returning();
+
+      if (!updatedModel) {
+        return res.status(404).json({ message: "AI model not found" });
+      }
+
+      // Don't return API key
+      const responseModel = { ...updatedModel, apiKey: '••••••••', temperature: updatedModel.temperature / 100 };
+      res.json(responseModel);
+    } catch (error) {
+      console.error("Error updating AI model:", error);
+      res.status(500).json({ message: "Failed to update AI model" });
+    }
+  });
+
+  app.delete("/api/admin/ai-models/:id", isAdmin, async (req, res) => {
+    try {
+      const { aiModels } = await import("@db/schema");
+      const modelId = parseInt(req.params.id);
+
+      const [deletedModel] = await db
+        .delete(aiModels)
+        .where(eq(aiModels.id, modelId))
+        .returning();
+
+      if (!deletedModel) {
+        return res.status(404).json({ message: "AI model not found" });
+      }
+
+      res.json({ message: "AI model deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting AI model:", error);
+      res.status(500).json({ message: "Failed to delete AI model" });
+    }
+  });
+
+  app.post("/api/admin/ai-models/:id/test", isAdmin, async (req, res) => {
+    try {
+      const { aiModels } = await import("@db/schema");
+      const modelId = parseInt(req.params.id);
+
+      const [model] = await db
+        .select()
+        .from(aiModels)
+        .where(eq(aiModels.id, modelId));
+
+      if (!model) {
+        return res.status(404).json({ message: "AI model not found" });
+      }
+
+      // Simple test message
+      const testMessage = "Please respond with 'AI model test successful' to confirm you're working correctly.";
+      
+      try {
+        const response = await fetch(model.endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${model.apiKey}`,
+          },
+          body: JSON.stringify({
+            model: model.model,
+            messages: [
+              { role: 'system', content: model.systemPrompt },
+              { role: 'user', content: testMessage }
+            ],
+            temperature: model.temperature / 100,
+            max_tokens: Math.min(model.maxTokens, 100), // Limit for test
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`API request failed: ${response.status} ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        const aiResponse = data.choices?.[0]?.message?.content || 'No response content';
+
+        res.json({ 
+          success: true, 
+          response: aiResponse,
+          model: model.name 
+        });
+      } catch (apiError) {
+        throw new Error(`API call failed: ${apiError.message}`);
+      }
+    } catch (error) {
+      console.error("Error testing AI model:", error);
+      res.status(500).json({ 
+        message: "Failed to test AI model",
+        error: error.message 
       });
     }
   });

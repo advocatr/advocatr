@@ -21,7 +21,8 @@ import FeedbackPage from "@/pages/feedback";
 import ContactUsPage from "@/pages/contact-us";
 import ToolsPage from "@/pages/tools";
 import TermsAndConditionsPage from "@/pages/terms-and-conditions";
-import AdminToolsPage from "@/pages/admin/tools";
+import AdminToolsPage from "./pages/admin/tools";
+import AIConfigPage from "./pages/admin/ai-config";
 
 function AdminRoute({
   component: Component,
@@ -69,6 +70,9 @@ function Router() {
       </Route>
       <Route path="/admin/progress">
         {() => <AdminRoute component={AdminProgress} />}
+      </Route>
+      <Route path="/admin/ai-config">
+        {() => <AdminRoute component={AIConfigPage} />}
       </Route>
       <Route component={NotFound} />
     </Switch>

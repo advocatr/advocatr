@@ -86,6 +86,22 @@ export const tools = pgTable("tools", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+export const aiModels = pgTable("ai_models", {
+  id: serial("id").primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  provider: varchar("provider", { length: 100 }).notNull(),
+  apiKey: text("api_key").notNull(),
+  endpoint: varchar("endpoint", { length: 500 }).notNull(),
+  model: varchar("model", { length: 255 }).notNull(),
+  temperature: integer("temperature").notNull().default(70), // stored as integer (0-100)
+  maxTokens: integer("max_tokens").notNull().default(1000),
+  systemPrompt: text("system_prompt").notNull(),
+  isActive: boolean("is_active").default(true).notNull(),
+  isDefault: boolean("is_default").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 export const insertUserSchema = createInsertSchema(users);
 export const selectUserSchema = createSelectSchema(users);
 export const insertFeedbackSchema = createInsertSchema(feedback);
@@ -100,3 +116,5 @@ export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;
 export type NewPasswordResetToken = typeof passwordResetTokens.$inferInsert;
 export type Tool = typeof tools.$inferSelect;
 export type InsertTool = typeof tools.$inferInsert;
+export type AIModel = typeof aiModels.$inferSelect;
+export type InsertAIModel = typeof aiModels.$inferInsert;
