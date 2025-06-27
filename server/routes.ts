@@ -19,7 +19,13 @@ console.log("Object Storage Environment Variables:");
 console.log("REPLIT_OBJECT_STORAGE_BUCKET_ID:", process.env.REPLIT_OBJECT_STORAGE_BUCKET_ID);
 console.log("REPLIT_DB_URL:", process.env.REPLIT_DB_URL ? "Set" : "Not set");
 
-const objectStorage = new Client();
+// Read bucket ID from .replit file configuration
+const BUCKET_ID = "replit-objstore-24e48890-f9cb-42ef-ad72-11bb3f26af45";
+console.log("Using explicit bucket ID:", BUCKET_ID);
+
+const objectStorage = new Client({
+  bucketId: BUCKET_ID
+});
 
 async function generateResetToken(userId: number) {
   const token = (await randomBytesAsync(32)).toString('hex');
