@@ -753,14 +753,24 @@ export function registerRoutes(app: Express): Server {
       let buffer: Buffer;
 
       // Handle the object storage response structure
-      if (videoData && typeof videoData === 'object' && 'ok' in videoData && 'value' in videoData) {
+      if (videoData && typeof videoData === 'object' && 'ok' in videoData) {
         // Handle Replit object storage response format
-        const response = videoData as { ok: boolean; value: Buffer[] };
-        if (response.ok && Array.isArray(response.value) && response.value.length > 0) {
+        const response = videoData as { ok: boolean; value?: Buffer[]; error?: any };
+        if (response.ok && response.value && Array.isArray(response.value) && response.value.length > 0) {
           buffer = response.value[0]; // Get the first (and should be only) Buffer
           console.log("Extracted Buffer from object storage response");
         } else {
-          throw new Error("Invalid object storage response");
+          console.error("Object storage error:", response.error);
+          throw new Error(`Object storage error: ${response.error?.message || 'Unknown error'}`);
+        }
+      } else if (videoData && typeof videoData === 'object' && 'value' in videoData) {
+        // Handle case where response doesn't have 'ok' field but has 'value'
+        const response = videoData as { value: Buffer[] };
+        if (Array.isArray(response.value) && response.value.length > 0) {
+          buffer = response.value[0];
+          console.log("Extracted Buffer from legacy response format");
+        } else {
+          throw new Error("Invalid object storage response - no valid data");
         }
       } else if (Buffer.isBuffer(videoData)) {
         buffer = videoData;
