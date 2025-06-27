@@ -20,8 +20,6 @@ export default function VideoRecorder({
   const [recordingStatus, setRecordingStatus] = useState<
     "inactive" | "recording" | "paused"
   >("inactive");
-  const [recordingTime, setRecordingTime] = useState(0);
-  const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     initializeMediaStream();
@@ -42,13 +40,6 @@ export default function VideoRecorder({
     }
     mediaRecorderRef.current = null;
     recordedChunksRef.current = [];
-    
-    // Clear recording timer
-    if (recordingTimerRef.current) {
-      clearInterval(recordingTimerRef.current);
-      recordingTimerRef.current = null;
-    }
-    setRecordingTime(0);
   };
 
   const initializeMediaStream = async () => {
@@ -201,12 +192,6 @@ export default function VideoRecorder({
         console.log("[onstart] Recording started");
         setRecordingStatus("recording");
         setIsRecording(true);
-        
-        // Start the recording timer
-        setRecordingTime(0);
-        recordingTimerRef.current = setInterval(() => {
-          setRecordingTime(prev => prev + 1);
-        }, 1000);
       };
 
       mediaRecorder.onstop = () => {
@@ -216,13 +201,6 @@ export default function VideoRecorder({
         );
         setRecordingStatus("inactive");
         setIsRecording(false);
-        
-        // Stop the recording timer
-        if (recordingTimerRef.current) {
-          clearInterval(recordingTimerRef.current);
-          recordingTimerRef.current = null;
-        }
-        
         if (
           mediaRecorder.state === "inactive" &&
           recordedChunksRef.current.length === 0
@@ -266,12 +244,6 @@ export default function VideoRecorder({
       mediaRecorderRef.current.requestData();
       mediaRecorderRef.current.stop();
     }
-  };
-
-  const formatTime = (seconds: number): string => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
   const handleRecordingComplete = async () => {
@@ -363,12 +335,6 @@ export default function VideoRecorder({
           <div className="absolute top-4 left-4 flex items-center space-x-2 bg-red-600 text-white px-3 py-1 rounded-full">
             <Circle className="h-3 w-3 animate-pulse" fill="currentColor" />
             <span className="text-sm font-medium">Recording</span>
-          </div>
-        )}
-
-        {isRecording && (
-          <div className="absolute top-4 right-4 bg-black bg-opacity-70 text-white px-3 py-1 rounded">
-            <span className="text-lg font-mono font-bold">{formatTime(recordingTime)}</span>
           </div>
         )}
       </div>
