@@ -521,26 +521,88 @@ export function registerRoutes(app: Express): Server {
 
     try {
       const filename = decodeURIComponent(req.params.filename);
-      const videoData = await objectStorage.downloadAsBytes(filename);
+      console.log("Attempting to serve video:", filename);
       
-      // Handle the response from object storage properly
+      const videoData = await objectStorage.downloadAsBytes(filename);
+      console.log("Video data received:", {
+        type: typeof videoData,
+        constructor: videoData?.constructor?.name,
+        isBuffer: Buffer.isBuffer(videoData),
+        isUint8Array: videoData instanceof Uint8Array,
+        hasLength: 'length' in videoData,
+        length: videoData?.length
+      });
+      
       let buffer: Buffer;
-      if (videoData instanceof Uint8Array) {
-        buffer = Buffer.from(videoData);
-      } else if (Buffer.isBuffer(videoData)) {
+      
+      // Handle different possible return types from object storage
+      if (Buffer.isBuffer(videoData)) {
         buffer = videoData;
+        console.log("Using existing Buffer");
+      } else if (videoData instanceof Uint8Array) {
+        buffer = Buffer.from(videoData);
+        console.log("Converted Uint8Array to Buffer");
+      } else if (videoData && typeof videoData === 'object' && 'data' in videoData) {
+        // Handle case where object storage returns a wrapper object
+        buffer = Buffer.from((videoData as any).data);
+        console.log("Extracted data from wrapper object");
+      } else if (Array.isArray(videoData)) {
+        buffer = Buffer.from(videoData);
+        console.log("Converted Array to Buffer");
       } else {
-        // If it's an object with a buffer property or similar
-        buffer = Buffer.from(videoData as any);
+        console.error("Unexpected data type from object storage:", typeof videoData, videoData);
+        throw new Error(`Unexpected data type: ${typeof videoData}`);
+      }
+
+      console.log("Final buffer size:", buffer.length);
+
+      if (buffer.length === 0) {
+        throw new Error("Empty video file");
       }
 
       res.setHeader('Content-Type', 'video/webm');
       res.setHeader('Content-Length', buffer.length.toString());
       res.setHeader('Accept-Ranges', 'bytes');
+      res.setHeader('Cache-Control', 'public, max-age=31536000');
       res.send(buffer);
+      
+      console.log("Video served successfully");
     } catch (error) {
       console.error("Error serving video:", error);
+      console.error("Error details:", {
+        name: error?.name,
+        message: error?.message,
+        stack: error?.stack
+      });
       res.status(404).json({ message: "Video not found" });
+    }
+  });
+
+  // Debug endpoint to inspect object storage data
+  app.get("/api/debug/video/:filename", async (req, res) => {
+    if (!req.isAuthenticated() || !req.user.isAdmin) {
+      return res.status(403).send("Unauthorized");
+    }
+
+    try {
+      const filename = decodeURIComponent(req.params.filename);
+      const videoData = await objectStorage.downloadAsBytes(filename);
+      
+      res.json({
+        filename,
+        dataType: typeof videoData,
+        constructorName: videoData?.constructor?.name,
+        isBuffer: Buffer.isBuffer(videoData),
+        isUint8Array: videoData instanceof Uint8Array,
+        isArray: Array.isArray(videoData),
+        hasLength: 'length' in videoData,
+        length: videoData?.length,
+        keys: videoData && typeof videoData === 'object' ? Object.keys(videoData) : null,
+        firstFewBytes: videoData?.length ? Array.from(videoData.slice(0, 10)) : null
+      });
+    } catch (error) {
+      console.error("Debug error:", error);
+      res.status(500).json({ error: error.message });
     }
   });
 
