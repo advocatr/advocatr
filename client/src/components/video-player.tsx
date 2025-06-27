@@ -1,13 +1,14 @@
 
 import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { Play, Pause } from "lucide-react";
+import { Play, Pause, RotateCcw } from "lucide-react";
 
 interface VideoPlayerProps {
   url?: string | null;
+  onRerecord?: () => void;
 }
 
-export default function VideoPlayer({ url }: VideoPlayerProps) {
+export default function VideoPlayer({ url, onRerecord }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [hasError, setHasError] = useState(false);
@@ -93,6 +94,18 @@ export default function VideoPlayer({ url }: VideoPlayerProps) {
           )}
           {isPlaying ? "Pause" : "Play"}
         </Button>
+        
+        {onRerecord && (
+          <Button 
+            onClick={onRerecord}
+            variant="outline"
+            className="flex items-center gap-2"
+            disabled={hasError || isLoading}
+          >
+            <RotateCcw className="h-4 w-4" />
+            Rerecord
+          </Button>
+        )}
       </div>
     </div>
   );

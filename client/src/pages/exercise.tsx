@@ -44,6 +44,7 @@ export default function Exercise() {
   const { toast } = useToast();
   const [uploadProgress, setUploadProgress] = useState(0);
   const [showProfessionalAnswer, setShowProfessionalAnswer] = useState(false);
+  const [showRecorder, setShowRecorder] = useState(false);
   const [showPdf, setShowPdf] = useState(false);
 
   const { data: exercise } = useQuery<Exercise>({
@@ -191,14 +192,18 @@ export default function Exercise() {
 
           <div>
             <h2 className="text-xl font-semibold mb-4">Your Submission</h2>
-            {progress?.videoUrl ? (
-              <VideoPlayer url={progress.videoUrl} />
+            {progress?.videoUrl && !showRecorder ? (
+              <VideoPlayer 
+                url={progress.videoUrl} 
+                onRerecord={() => setShowRecorder(true)}
+              />
             ) : (
               <VideoRecorder 
                 onRecordingComplete={(blob, videoUrl) => {
                   if (videoUrl) {
                     // Update progress with the server video URL
                     updateProgressMutation.mutate({ videoUrl, completed: true });
+                    setShowRecorder(false);
                   }
                 }}
               />
