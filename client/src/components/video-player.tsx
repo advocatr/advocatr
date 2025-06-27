@@ -175,6 +175,14 @@ export default function VideoPlayer({
   };
 
   const startRecording = async () => {
+    
+      const mimeType = 'video/webm;codecs=vp8,opus';
+
+      if (!MediaRecorder.isTypeSupported(mimeType)) {
+        alert('vp8/opus mime type is not supported');
+
+        return;
+      }
     try {
       setError(null);
 
