@@ -652,6 +652,10 @@ export function registerRoutes(app: Express): Server {
     const userId = parseInt(req.params.id);
     const { newPassword } = req.body;
 
+    if (!newPassword || typeof newPassword !== 'string' || newPassword.trim().length === 0) {
+      return res.status(400).json({ message: "New password is required and must be a non-empty string" });
+    }
+
     const [user] = await db
       .select()
       .from(users)
