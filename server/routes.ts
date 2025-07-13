@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { setupAuth } from "./auth";
 import { db } from "@db";
 import { exercises, userProgress, feedback, users, passwordResetTokens } from "@db/schema";
-import { eq, and, lt } from "drizzle-orm";
+import { eq, and, lt, gt } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import { promisify } from "util";
 import * as crypto from 'crypto';
@@ -621,7 +621,7 @@ export function registerRoutes(app: Express): Server {
       .where(
         and(
           eq(passwordResetTokens.token, token),
-          lt(passwordResetTokens.expiresAt, new Date())
+          gt(passwordResetTokens.expiresAt, new Date())
         )
       )
       .limit(1);
