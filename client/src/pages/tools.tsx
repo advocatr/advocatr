@@ -147,17 +147,6 @@ export default function ToolsPage() {
                         <CardDescription className="text-base mb-6 text-gray-700">
                           {tool.description}
                         </CardDescription>
-                        <Button asChild className="w-full md:w-auto">
-                          <a 
-                            href={tool.downloadUrl} 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-2"
-                          >
-                            <ExternalLink className="h-4 w-4" />
-                            Download Tool
-                          </a>
-                        </Button>
                         <ToolRunner tool={tool} />
                       </CardContent>
                     </div>
