@@ -1,12 +1,11 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
-import { setupAuth } from "./auth";
 import { db } from "@db";
 import { exercises, userProgress, feedback, users, passwordResetTokens } from "@db/schema";
 import { eq, and, lt, gt } from "drizzle-orm";
-import { randomBytes } from "crypto";
+import { randomBytes, createHash } from "crypto";
 import { promisify } from "util";
-import * as crypto from 'crypto';
+import { setupAuth } from "./auth";
 import { sendContactEmail } from "./email"; // Added import
 import { Client } from "@replit/object-storage";
 import fs from "fs";
@@ -652,8 +651,15 @@ export function registerRoutes(app: Express): Server {
     const userId = parseInt(req.params.id);
     const { newPassword } = req.body;
 
+    console.log("Password reset request:", { userId, hasNewPassword: !!newPassword, passwordType: typeof newPassword });
+
     if (!newPassword || typeof newPassword !== 'string' || newPassword.trim().length === 0) {
       return res.status(400).json({ message: "New password is required and must be a non-empty string" });
+    }
+
+    const trimmedPassword = newPassword.trim();
+    if (trimmedPassword.length < 1) {
+      return res.status(400).json({ message: "Password cannot be empty" });
     }
 
     const [user] = await db
@@ -666,21 +672,30 @@ export function registerRoutes(app: Express): Server {
       return res.status(404).send("User not found");
     }
 
-    // Hash the new password
-    const hashedPassword = await crypto.hash(newPassword);
+    try {
+      // Import crypto helper from auth module
+      const { crypto } = await import("./auth");
+      
+      // Hash the new password
+      const hashedPassword = await crypto.hash(trimmedPassword);
 
-    // Update the user's password
-    await db
-      .update(users)
-      .set({ password: hashedPassword })
-      .where(eq(users.id, userId));
+      // Update the user's password
+      await db
+        .update(users)
+        .set({ password: hashedPassword })
+        .where(eq(users.id, userId));
 
-    // Delete any existing reset tokens
-    await db
-      .delete(passwordResetTokens)
-      .where(eq(passwordResetTokens.userId, userId));
+      // Delete any existing reset tokens
+      await db
+        .delete(passwordResetTokens)
+        .where(eq(passwordResetTokens.userId, userId));
 
-    res.json({ message: "Password reset successfully" });
+      console.log("Password reset successful for user:", userId);
+      res.json({ message: "Password reset successfully" });
+    } catch (error) {
+      console.error("Error resetting password:", error);
+      res.status(500).json({ message: "Failed to reset password" });
+    }
   });
 
   // Contact form endpoint
