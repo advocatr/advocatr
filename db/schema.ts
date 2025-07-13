@@ -81,6 +81,7 @@ export const tools = pgTable("tools", {
   description: text("description").notNull(),
   downloadUrl: varchar("download_url", { length: 500 }).notNull(),
   images: text("images").array(),
+  pythonCode: text("python_code"), // Python code that admins can configure
   isActive: boolean("is_active").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),

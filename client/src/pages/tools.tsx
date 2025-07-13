@@ -14,42 +14,43 @@ interface Tool {
   description: string;
   downloadUrl: string;
   images: string[];
+  pythonCode?: string;
   isActive: boolean;
 }
 
-interface PythonRunnerProps {
-  toolId: number;
-  toolTitle: string;
+interface ToolRunnerProps {
+  tool: Tool;
 }
 
-function PythonRunner({ toolId, toolTitle }: PythonRunnerProps) {
-  const [code, setCode] = useState(`# ${toolTitle} - Python Code Runner
-print("Hello from ${toolTitle}!")
-
-# Write your Python code here
-`);
+function ToolRunner({ tool }: ToolRunnerProps) {
+  const [userInput, setUserInput] = useState("");
   const [output, setOutput] = useState("");
   const [isRunning, setIsRunning] = useState(false);
 
-  const runCode = async () => {
+  // Don't show the runner if there's no Python code configured
+  if (!tool.pythonCode || tool.pythonCode.trim() === '') {
+    return null;
+  }
+
+  const runTool = async () => {
     setIsRunning(true);
     setOutput("Running...");
     
     try {
-      const response = await fetch('/api/run-python', {
+      const response = await fetch(`/api/tools/${tool.id}/run`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ code }),
+        body: JSON.stringify({ userInput }),
       });
       
       const result = await response.json();
       
       if (response.ok) {
-        setOutput(result.output || "Code executed successfully (no output)");
+        setOutput(result.output || "Tool executed successfully");
       } else {
-        setOutput(`Error: ${result.error || 'Failed to execute code'}`);
+        setOutput(`Error: ${result.error || 'Failed to execute tool'}`);
       }
     } catch (error) {
       setOutput(`Network error: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -61,32 +62,32 @@ print("Hello from ${toolTitle}!")
   return (
     <div className="space-y-4 mt-4 border-t pt-4">
       <div className="flex items-center gap-2">
-        <Code className="h-4 w-4" />
-        <h4 className="font-semibold text-sm">Python Code Runner</h4>
+        <Play className="h-4 w-4" />
+        <h4 className="font-semibold text-sm">Use This Tool</h4>
       </div>
       
       <div className="space-y-2">
         <Textarea
-          value={code}
-          onChange={(e) => setCode(e.target.value)}
-          placeholder="Write your Python code here..."
-          className="font-mono text-sm min-h-[120px]"
+          value={userInput}
+          onChange={(e) => setUserInput(e.target.value)}
+          placeholder="Enter any input for this tool..."
+          className="text-sm min-h-[80px]"
         />
         
         <Button 
-          onClick={runCode} 
+          onClick={runTool} 
           disabled={isRunning}
           size="sm"
           className="w-full"
         >
           <Play className="h-4 w-4 mr-2" />
-          {isRunning ? "Running..." : "Run Code"}
+          {isRunning ? "Running..." : `Use ${tool.title}`}
         </Button>
       </div>
       
       {output && (
         <div className="bg-gray-100 p-3 rounded border">
-          <h5 className="font-semibold text-xs mb-2">Output:</h5>
+          <h5 className="font-semibold text-xs mb-2">Result:</h5>
           <pre className="text-xs whitespace-pre-wrap font-mono">{output}</pre>
         </div>
       )}
@@ -157,7 +158,7 @@ export default function ToolsPage() {
                             Download Tool
                           </a>
                         </Button>
-                        <PythonRunner toolId={tool.id} toolTitle={tool.title} />
+                        <ToolRunner tool={tool} />
                       </CardContent>
                     </div>
                     

@@ -699,6 +699,92 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
+  // Run tool's Python code endpoint
+  app.post("/api/tools/:id/run", async (req, res) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+
+    try {
+      const { tools } = await import("@db/schema");
+      const toolId = parseInt(req.params.id);
+      const { userInput } = req.body;
+
+      // Get the tool and its Python code
+      const [tool] = await db
+        .select()
+        .from(tools)
+        .where(and(eq(tools.id, toolId), eq(tools.isActive, true)));
+
+      if (!tool) {
+        return res.status(404).json({ error: "Tool not found or inactive" });
+      }
+
+      if (!tool.pythonCode || tool.pythonCode.trim() === '') {
+        return res.json({ output: "This tool doesn't have any configured functionality yet." });
+      }
+
+      // Prepare the Python code with user input if provided
+      let codeToRun = tool.pythonCode;
+      
+      // If user input is provided, make it available as a variable
+      if (userInput && userInput.trim()) {
+        codeToRun = `user_input = """${userInput.replace(/"""/g, '\\"""')}"""\n\n${codeToRun}`;
+      }
+
+      // Create a temporary file with the Python code
+      const tempFileName = `/tmp/tool_${toolId}_${Date.now()}.py`;
+      fs.writeFileSync(tempFileName, codeToRun);
+
+      // Execute the Python code
+      const pythonProcess = spawn('python3', [tempFileName], {
+        timeout: 10000, // 10 second timeout
+        stdio: ['pipe', 'pipe', 'pipe']
+      });
+
+      let output = '';
+      let errorOutput = '';
+
+      pythonProcess.stdout.on('data', (data) => {
+        output += data.toString();
+      });
+
+      pythonProcess.stderr.on('data', (data) => {
+        errorOutput += data.toString();
+      });
+
+      pythonProcess.on('close', (code) => {
+        // Clean up temporary file
+        try {
+          fs.unlinkSync(tempFileName);
+        } catch (cleanupError) {
+          console.warn('Failed to clean up temp file:', cleanupError);
+        }
+
+        if (code === 0) {
+          res.json({ output: output || 'Tool executed successfully' });
+        } else {
+          res.status(400).json({ error: errorOutput || 'Tool execution failed' });
+        }
+      });
+
+      pythonProcess.on('error', (error) => {
+        // Clean up temporary file
+        try {
+          fs.unlinkSync(tempFileName);
+        } catch (cleanupError) {
+          console.warn('Failed to clean up temp file:', cleanupError);
+        }
+        
+        res.status(500).json({ error: `Failed to execute tool: ${error.message}` });
+      });
+
+    } catch (error) {
+      console.error('Tool execution error:', error);
+      res.status(500).json({ error: 'Internal server error during tool execution' });
+    }
+  });
+
   // Python code execution endpoint
   app.post("/api/run-python", async (req, res) => {
     const { code } = req.body;
@@ -1523,7 +1609,7 @@ export function registerRoutes(app: Express): Server {
   app.post("/api/admin/tools", isAdmin, async (req, res) => {
     try {
       const { tools } = await import("@db/schema");
-      const { title, description, downloadUrl, images, isActive } = req.body;
+      const { title, description, downloadUrl, images, pythonCode, isActive } = req.body;
 
       if (!title || !description || !downloadUrl) {
         return res.status(400).json({ message: "Title, description, and download URL are required" });
@@ -1536,6 +1622,7 @@ export function registerRoutes(app: Express): Server {
           description,
           downloadUrl,
           images: images || [],
+          pythonCode: pythonCode || null,
           isActive: isActive !== undefined ? isActive : true,
         })
         .returning();
@@ -1551,7 +1638,7 @@ export function registerRoutes(app: Express): Server {
     try {
       const { tools } = await import("@db/schema");
       const toolId = parseInt(req.params.id);
-      const { title, description, downloadUrl, images, isActive } = req.body;
+      const { title, description, downloadUrl, images, pythonCode, isActive } = req.body;
 
       if (!title || !description || !downloadUrl) {
         return res.status(400).json({ message: "Title, description, and download URL are required" });
@@ -1564,6 +1651,7 @@ export function registerRoutes(app: Express): Server {
           description,
           downloadUrl,
           images: images || [],
+          pythonCode: pythonCode || null,
           isActive: isActive !== undefined ? isActive : true,
           updatedAt: new Date(),
         })

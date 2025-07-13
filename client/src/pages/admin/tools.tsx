@@ -28,6 +28,7 @@ interface ToolFormData {
   description: string;
   downloadUrl: string;
   images: string;
+  pythonCode: string;
   isActive: boolean;
 }
 
@@ -39,6 +40,7 @@ export default function AdminToolsPage() {
     description: "",
     downloadUrl: "",
     images: "",
+    pythonCode: "",
     isActive: true,
   });
 
@@ -147,6 +149,7 @@ export default function AdminToolsPage() {
       description: "",
       downloadUrl: "",
       images: "",
+      pythonCode: "",
       isActive: true,
     });
   };
@@ -158,6 +161,7 @@ export default function AdminToolsPage() {
       description: tool.description,
       downloadUrl: tool.downloadUrl,
       images: tool.images.join('\n'),
+      pythonCode: tool.pythonCode || "",
       isActive: tool.isActive,
     });
   };
@@ -238,6 +242,17 @@ export default function AdminToolsPage() {
                     onChange={(e) => setFormData({ ...formData, images: e.target.value })}
                     rows={4}
                     placeholder="https://example.com/image1.jpg&#10;https://example.com/image2.jpg"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="pythonCode">Python Code (optional)</Label>
+                  <Textarea
+                    id="pythonCode"
+                    value={formData.pythonCode}
+                    onChange={(e) => setFormData({ ...formData, pythonCode: e.target.value })}
+                    rows={8}
+                    className="font-mono text-sm"
+                    placeholder="# Python code for this tool&#10;print('Hello from this tool!')&#10;&#10;# Users will see the output when they interact with this tool"
                   />
                 </div>
                 <div className="flex items-center space-x-2">
@@ -345,6 +360,17 @@ export default function AdminToolsPage() {
                                 onChange={(e) => setFormData({ ...formData, images: e.target.value })}
                                 rows={4}
                                 placeholder="https://example.com/image1.jpg&#10;https://example.com/image2.jpg"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="edit-pythonCode">Python Code (optional)</Label>
+                              <Textarea
+                                id="edit-pythonCode"
+                                value={formData.pythonCode}
+                                onChange={(e) => setFormData({ ...formData, pythonCode: e.target.value })}
+                                rows={8}
+                                className="font-mono text-sm"
+                                placeholder="# Python code for this tool&#10;print('Hello from this tool!')&#10;&#10;# Users will see the output when they interact with this tool"
                               />
                             </div>
                             <div className="flex items-center space-x-2">
