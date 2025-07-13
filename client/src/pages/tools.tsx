@@ -3,8 +3,10 @@ import { Layout } from "@/components/layout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious } from "@/components/ui/carousel";
 import { Button } from "@/components/ui/button";
-import { ExternalLink } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { ExternalLink, Play, Code } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 
 interface Tool {
   id: number;
@@ -13,6 +15,83 @@ interface Tool {
   downloadUrl: string;
   images: string[];
   isActive: boolean;
+}
+
+interface PythonRunnerProps {
+  toolId: number;
+  toolTitle: string;
+}
+
+function PythonRunner({ toolId, toolTitle }: PythonRunnerProps) {
+  const [code, setCode] = useState(`# ${toolTitle} - Python Code Runner
+print("Hello from ${toolTitle}!")
+
+# Write your Python code here
+`);
+  const [output, setOutput] = useState("");
+  const [isRunning, setIsRunning] = useState(false);
+
+  const runCode = async () => {
+    setIsRunning(true);
+    setOutput("Running...");
+    
+    try {
+      const response = await fetch('/api/run-python', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ code }),
+      });
+      
+      const result = await response.json();
+      
+      if (response.ok) {
+        setOutput(result.output || "Code executed successfully (no output)");
+      } else {
+        setOutput(`Error: ${result.error || 'Failed to execute code'}`);
+      }
+    } catch (error) {
+      setOutput(`Network error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsRunning(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4 mt-4 border-t pt-4">
+      <div className="flex items-center gap-2">
+        <Code className="h-4 w-4" />
+        <h4 className="font-semibold text-sm">Python Code Runner</h4>
+      </div>
+      
+      <div className="space-y-2">
+        <Textarea
+          value={code}
+          onChange={(e) => setCode(e.target.value)}
+          placeholder="Write your Python code here..."
+          className="font-mono text-sm min-h-[120px]"
+        />
+        
+        <Button 
+          onClick={runCode} 
+          disabled={isRunning}
+          size="sm"
+          className="w-full"
+        >
+          <Play className="h-4 w-4 mr-2" />
+          {isRunning ? "Running..." : "Run Code"}
+        </Button>
+      </div>
+      
+      {output && (
+        <div className="bg-gray-100 p-3 rounded border">
+          <h5 className="font-semibold text-xs mb-2">Output:</h5>
+          <pre className="text-xs whitespace-pre-wrap font-mono">{output}</pre>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function ToolsPage() {
@@ -78,6 +157,7 @@ export default function ToolsPage() {
                             Download Tool
                           </a>
                         </Button>
+                        <PythonRunner toolId={tool.id} toolTitle={tool.title} />
                       </CardContent>
                     </div>
                     

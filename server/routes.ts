@@ -9,6 +9,7 @@ import { setupAuth } from "./auth";
 import { sendContactEmail } from "./email"; // Added import
 import { Client } from "@replit/object-storage";
 import fs from "fs";
+import { spawn } from "child_process";
 import { VideoProcessor } from "./video-processor";
 
 const randomBytesAsync = promisify(randomBytes);
@@ -695,6 +696,68 @@ export function registerRoutes(app: Express): Server {
     } catch (error) {
       console.error("Error resetting password:", error);
       res.status(500).json({ message: "Failed to reset password" });
+    }
+  });
+
+  // Python code execution endpoint
+  app.post("/api/run-python", async (req, res) => {
+    const { code } = req.body;
+
+    if (!code || typeof code !== 'string') {
+      return res.status(400).json({ error: "Code is required and must be a string" });
+    }
+
+    try {
+      // Create a temporary file with the Python code
+      const tempFileName = `/tmp/temp_code_${Date.now()}.py`;
+      fs.writeFileSync(tempFileName, code);
+
+      // Execute the Python code
+      const pythonProcess = spawn('python3', [tempFileName], {
+        timeout: 10000, // 10 second timeout
+        stdio: ['pipe', 'pipe', 'pipe']
+      });
+
+      let output = '';
+      let errorOutput = '';
+
+      pythonProcess.stdout.on('data', (data) => {
+        output += data.toString();
+      });
+
+      pythonProcess.stderr.on('data', (data) => {
+        errorOutput += data.toString();
+      });
+
+      pythonProcess.on('close', (code) => {
+        // Clean up temporary file
+        try {
+          fs.unlinkSync(tempFileName);
+        } catch (cleanupError) {
+          console.warn('Failed to clean up temp file:', cleanupError);
+        }
+
+        if (code === 0) {
+          res.json({ output: output || 'Code executed successfully' });
+        } else {
+          res.status(400).json({ error: errorOutput || 'Execution failed' });
+        }
+      });
+
+      pythonProcess.on('error', (error) => {
+        // Clean up temporary file
+        try {
+          fs.unlinkSync(tempFileName);
+        } catch (cleanupError) {
+          console.warn('Failed to clean up temp file:', cleanupError);
+        }
+        
+        res.status(500).json({ error: `Failed to execute Python code: ${error.message}` });
+      });
+
+    } catch (error) {
+      console.error('Python execution error:', error);
+      res.status(500).json({ error: 'Internal server error during code execution' });
     }
   });
 
