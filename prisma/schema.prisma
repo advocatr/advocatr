@@ -1,0 +1,107 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          Int                  @id @default(autoincrement())
+  username    String               @unique(map: "users_username_unique")
+  password    String
+  email       String               @unique(map: "users_email_unique")
+  isAdmin     Boolean?             @default(false) @map("is_admin")
+  createdAt   DateTime?            @default(now()) @map("created_at") @db.Timestamp(6)
+  resetTokens PasswordResetToken[]
+  progress    UserProgress[]
+
+  @@map("users")
+}
+
+model PasswordResetToken {
+  id        Int       @id @default(autoincrement())
+  userId    Int       @map("user_id")
+  token     String    @unique(map: "password_reset_tokens_token_unique")
+  expiresAt DateTime  @map("expires_at") @db.Timestamp(6)
+  createdAt DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+  user      User      @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "password_reset_tokens_user_id_users_id_fk")
+
+  @@map("password_reset_tokens")
+}
+
+model Exercise {
+  id                    Int            @id @default(autoincrement())
+  title                 String
+  description           String
+  demoVideoUrl          String         @map("demo_video_url")
+  professionalAnswerUrl String         @map("professional_answer_url")
+  order                 Int
+  pdfUrl                String?        @map("pdf_url")
+  switchTimes           String         @default("[]") @map("switch_times")
+  progress              UserProgress[]
+
+  @@map("exercises")
+}
+
+model UserProgress {
+  id         Int        @id @default(autoincrement())
+  userId     Int        @map("user_id")
+  exerciseId Int        @map("exercise_id")
+  videoUrl   String?    @map("video_url")
+  completed  Boolean?   @default(false)
+  updatedAt  DateTime?  @default(now()) @map("updated_at") @db.Timestamp(6)
+  feedback   Feedback[]
+  exercise   Exercise   @relation(fields: [exerciseId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "user_progress_exercise_id_exercises_id_fk")
+  user       User       @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "user_progress_user_id_users_id_fk")
+
+  @@map("user_progress")
+}
+
+model Feedback {
+  id                Int          @id @default(autoincrement())
+  progressId        Int          @map("progress_id")
+  content           String
+  rating            Int
+  createdAt         DateTime?    @default(now()) @map("created_at") @db.Timestamp(6)
+  isAiGenerated     Boolean      @default(false) @map("is_ai_generated")
+  aiAnalysisStatus  String?      @map("ai_analysis_status")
+  aiConfidenceScore Int?         @map("ai_confidence_score")
+  progress          UserProgress @relation(fields: [progressId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "feedback_progress_id_user_progress_id_fk")
+
+  @@map("feedback")
+}
+
+model Tool {
+  id          Int      @id @default(autoincrement())
+  title       String   @db.VarChar(255)
+  description String
+  downloadUrl String   @map("download_url") @db.VarChar(500)
+  images      String[]
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  @@map("tools")
+}
+
+model AIModel {
+  id           Int      @id @default(autoincrement())
+  name         String   @db.VarChar(255)
+  provider     String   @db.VarChar(100)
+  apiKey       String   @map("api_key")
+  endpoint     String   @db.VarChar(500)
+  model        String   @db.VarChar(255)
+  temperature  Int      @default(70)
+  maxTokens    Int      @default(1000) @map("max_tokens")
+  systemPrompt String   @map("system_prompt")
+  isActive     Boolean  @default(true) @map("is_active")
+  isDefault    Boolean  @default(false) @map("is_default")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  @@index([isActive], map: "idx_ai_models_is_active")
+  @@index([isDefault], map: "idx_ai_models_is_default")
+  @@map("ai_models")
+}

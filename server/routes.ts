@@ -1,18 +1,15 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
-import { db } from "@db";
-import { exercises, userProgress, feedback, users, passwordResetTokens } from "@db/schema";
-import { eq, and, lt, gt } from "drizzle-orm";
-import { randomBytes, createHash } from "crypto";
-import { promisify } from "util";
 import { setupAuth } from "./auth";
+import { prisma } from "../db/prisma";
+import fs from "fs";
+import path from "path";
+import crypto from "crypto";
+import { spawn } from "child_process";
 import { sendContactEmail } from "./email"; // Added import
 import { Client } from "@replit/object-storage";
-import fs from "fs";
-import { spawn } from "child_process";
-import { VideoProcessor } from "./video-processor";
 
-const randomBytesAsync = promisify(randomBytes);
+const BUCKET_ID = process.env['REPLIT_OBJECT_STORAGE_BUCKET_ID'] || 'db';
 
 // Debug object storage configuration
 console.log("Object Storage Environment Variables:");
@@ -30,68 +27,63 @@ try {
 }
 
 async function generateResetToken(userId: number) {
-  const token = (await randomBytesAsync(32)).toString('hex');
+  const token = crypto.randomBytes(32).toString('hex');
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours from now
 
-  const [resetToken] = await db
-    .insert(passwordResetTokens)
-    .values({
+  await prisma.passwordResetToken.create({
+    data: {
       userId,
       token,
       expiresAt,
-    })
-    .returning();
+    },
+  });
 
-  return resetToken;
+  return { userId, token, expiresAt };
 }
 
 async function processAiAnalysis(feedbackId: number, videoUrl: string) {
   try {
     // Update status to processing
-    await db
-      .update(feedback)
-      .set({ aiAnalysisStatus: "processing" })
-      .where(eq(feedback.id, feedbackId));
-
-    const { aiModels } = await import("@db/schema");
+    await prisma.feedback.update({
+      where: { id: feedbackId },
+      data: { aiAnalysisStatus: "processing" },
+    });
 
     // Get the default AI model
-    const [defaultModel] = await db
-      .select()
-      .from(aiModels)
-      .where(and(eq(aiModels.isDefault, true), eq(aiModels.isActive, true)))
-      .limit(1);
+    const defaultModel = await prisma.aIModel.findFirst({
+      where: { isDefault: true, isActive: true },
+    });
 
     if (!defaultModel) {
       // Fall back to mock if no AI model configured
       console.log("No AI model configured, using mock feedback");
       const mockFeedback = generateMockAiFeedback();
 
-      await db
-        .update(feedback)
-        .set({
+      await prisma.feedback.update({
+        where: { id: feedbackId },
+        data: {
           content: mockFeedback.content,
           rating: mockFeedback.rating,
           aiAnalysisStatus: "completed",
           aiConfidenceScore: mockFeedback.confidenceScore,
-        })
-        .where(eq(feedback.id, feedbackId));
+        },
+      });
       return;
     }
 
     try {
       // Check if this is a Gemini model and if we can process video
-      if ((defaultModel.provider === 'google' || defaultModel.provider === 'gemini') 
-          && videoUrl.startsWith('/api/video/')) {
-        
+      if ((defaultModel.provider === 'google' || defaultModel.provider === 'gemini')
+        && videoUrl.startsWith('/api/video/')) {
+
         console.log("Using video analysis for Gemini model");
-        
+
         // Get the video file from object storage
         const filename = decodeURIComponent(videoUrl.replace('/api/video/', ''));
         const videoData = await objectStorage.downloadAsBytes(filename);
-        
+
         let videoBuffer: Buffer;
-        
+
         // Handle the object storage response structure
         if (videoData && typeof videoData === 'object' && 'ok' in videoData && 'value' in videoData) {
           const response = videoData as { ok: boolean; value: Buffer[] };
@@ -109,8 +101,8 @@ async function processAiAnalysis(feedbackId: number, videoUrl: string) {
         }
 
         // Create video processor
-        const videoProcessor = new VideoProcessor(defaultModel.apiKey);
-        
+        const videoProcessor = new (await import("./video-processor")).VideoProcessor(defaultModel.apiKey);
+
         // Analyze the video with frames
         const analysisResult = await videoProcessor.analyzeVideo(
           videoBuffer,
@@ -120,24 +112,24 @@ async function processAiAnalysis(feedbackId: number, videoUrl: string) {
         );
 
         // Extract rating from content
-        const ratingMatch = analysisResult.content.match(/(?:rating|score):\s*(\d+)(?:\/5)?/i) || 
-                            analysisResult.content.match(/(\d+)\/5/) ||
-                            analysisResult.content.match(/(\d+)\s*out\s*of\s*5/i) ||
-                            analysisResult.content.match(/rate(?:d|s)?\s*(?:this|the)?\s*(?:performance|submission)?\s*(?:at|as)?\s*(\d+)/i);
+        const ratingMatch = analysisResult.content.match(/(?:rating|score):\s*(\d+)(?:\/5)?/i) ||
+          analysisResult.content.match(/(\d+)\/5/) ||
+          analysisResult.content.match(/(\d+)\s*out\s*of\s*5/i) ||
+          analysisResult.content.match(/rate(?:d|s)?\s*(?:this|the)?\s*(?:performance|submission)?\s*(?:at|as)?\s*(\d+)/i);
 
         const extractedRating = ratingMatch ? parseInt(ratingMatch[1]) : 3;
         const finalRating = Math.max(1, Math.min(5, extractedRating));
 
         // Update with video analysis results
-        await db
-          .update(feedback)
-          .set({
+        await prisma.feedback.update({
+          where: { id: feedbackId },
+          data: {
             content: `[Video Analysis - Gemini Vision]\n\n${analysisResult.content}`,
             rating: finalRating,
             aiAnalysisStatus: "completed",
             aiConfidenceScore: analysisResult.confidenceScore,
-          })
-          .where(eq(feedback.id, feedbackId));
+          },
+        });
 
         console.log(`Video analysis completed for feedback ${feedbackId} using Gemini Vision (rating: ${finalRating}, confidence: ${analysisResult.confidenceScore}%)`);
         return;
@@ -207,10 +199,10 @@ Please rate the performance from 1-5 (where 1 is poor and 5 is excellent) and pr
       console.log(`Making AI request to ${defaultModel.provider} model ${defaultModel.model}`);
 
       // Use the modified endpoint for Gemini
-      const apiEndpoint = (defaultModel.provider === 'google' || defaultModel.provider === 'gemini') 
-        ? (defaultModel.endpoint.includes('?') 
-            ? `${defaultModel.endpoint}&key=${defaultModel.apiKey}`
-            : `${defaultModel.endpoint}?key=${defaultModel.apiKey}`)
+      const apiEndpoint = (defaultModel.provider === 'google' || defaultModel.provider === 'gemini')
+        ? (defaultModel.endpoint.includes('?')
+          ? `${defaultModel.endpoint}&key=${defaultModel.apiKey}`
+          : `${defaultModel.endpoint}?key=${defaultModel.apiKey}`)
         : defaultModel.endpoint;
 
       const response = await fetch(apiEndpoint, {
@@ -237,10 +229,10 @@ Please rate the performance from 1-5 (where 1 is poor and 5 is excellent) and pr
       }
 
       // Extract rating from content
-      const ratingMatch = aiContent.match(/(?:rating|score):\s*(\d+)(?:\/5)?/i) || 
-                          aiContent.match(/(\d+)\/5/) ||
-                          aiContent.match(/(\d+)\s*out\s*of\s*5/i) ||
-                          aiContent.match(/rate(?:d|s)?\s*(?:this|the)?\s*(?:performance|submission)?\s*(?:at|as)?\s*(\d+)/i);
+      const ratingMatch = aiContent.match(/(?:rating|score):\s*(\d+)(?:\/5)?/i) ||
+        aiContent.match(/(\d+)\/5/) ||
+        aiContent.match(/(\d+)\s*out\s*of\s*5/i) ||
+        aiContent.match(/rate(?:d|s)?\s*(?:this|the)?\s*(?:performance|submission)?\s*(?:at|as)?\s*(\d+)/i);
 
       const extractedRating = ratingMatch ? parseInt(ratingMatch[1]) : 3;
       const finalRating = Math.max(1, Math.min(5, extractedRating));
@@ -248,15 +240,15 @@ Please rate the performance from 1-5 (where 1 is poor and 5 is excellent) and pr
       const confidenceScore = 70; // Standard confidence for text-based analysis
 
       // Update with AI results
-      await db
-        .update(feedback)
-        .set({
+      await prisma.feedback.update({
+        where: { id: feedbackId },
+        data: {
           content: `[Text-based Analysis]\n\n${aiContent}`,
           rating: finalRating,
           aiAnalysisStatus: "completed",
           aiConfidenceScore: confidenceScore,
-        })
-        .where(eq(feedback.id, feedbackId));
+        },
+      });
 
       console.log(`AI analysis completed for feedback ${feedbackId} using model ${defaultModel.name} (rating: ${finalRating}, confidence: ${confidenceScore}%)`);
     } catch (aiError) {
@@ -265,22 +257,22 @@ Please rate the performance from 1-5 (where 1 is poor and 5 is excellent) and pr
       // Fall back to mock if AI call fails
       const mockFeedback = generateMockAiFeedback();
 
-      await db
-        .update(feedback)
-        .set({
+      await prisma.feedback.update({
+        where: { id: feedbackId },
+        data: {
           content: `[AI Analysis - Mock Response Due to Technical Issue]\n\n${mockFeedback.content}`,
           rating: mockFeedback.rating,
           aiAnalysisStatus: "completed",
           aiConfidenceScore: mockFeedback.confidenceScore,
-        })
-        .where(eq(feedback.id, feedbackId));
+        },
+      });
     }
   } catch (error) {
     console.error("AI analysis failed:", error);
-    await db
-      .update(feedback)
-      .set({ aiAnalysisStatus: "failed" })
-      .where(eq(feedback.id, feedbackId));
+    await prisma.feedback.update({
+      where: { id: feedbackId },
+      data: { aiAnalysisStatus: "failed" },
+    });
   }
 }
 
@@ -316,67 +308,76 @@ function isAdmin(req: Express.Request, res: Express.Response, next: Express.Next
 export function registerRoutes(app: Express): Server {
   setupAuth(app);
 
-  // Get all exercises
+  // Exercises endpoints
   app.get("/api/exercises", async (req, res) => {
-    if (!req.isAuthenticated()) {
-      return res.status(401).send("Not authenticated");
+    try {
+      const exercises = await prisma.exercise.findMany({
+        orderBy: { order: 'asc' }
+      });
+      res.json(exercises);
+    } catch (error) {
+      console.error("Error fetching exercises:", error);
+      res.status(500).json({ message: "Failed to fetch exercises" });
     }
-    const allExercises = await db.query.exercises.findMany({
-      orderBy: exercises.order,
-    });
-    res.json(allExercises);
   });
 
-  // Get single exercise
   app.get("/api/exercises/:id", async (req, res) => {
-    if (!req.isAuthenticated()) {
-      return res.status(401).send("Not authenticated");
-    }
-    const exerciseId = parseInt(req.params.id);
-    const [exercise] = await db
-      .select()
-      .from(exercises)
-      .where(eq(exercises.id, exerciseId))
-      .limit(1);
+    try {
+      const id = parseInt(req.params.id);
+      const exercise = await prisma.exercise.findUnique({
+        where: { id }
+      });
 
-    if (!exercise) {
-      return res.status(404).send("Exercise not found");
-    }
-
-    res.json(exercise);
-  });
-
-  // Get user progress
-  app.get("/api/progress", async (req, res) => {
-    if (!req.isAuthenticated()) {
-      return res.status(401).send("Not authenticated");
-    }
-    const progress = await db.query.userProgress.findMany({
-      where: eq(userProgress.userId, req.user.id),
-      with: {
-        feedback: true
+      if (!exercise) {
+        return res.status(404).json({ message: "Exercise not found" });
       }
-    });
-    res.json(progress);
+
+      res.json(exercise);
+    } catch (error) {
+      console.error("Error fetching exercise:", error);
+      res.status(500).json({ message: "Failed to fetch exercise" });
+    }
   });
 
-  // Get progress for specific exercise
+  // Progress endpoints
   app.get("/api/progress/:exerciseId", async (req, res) => {
-    if (!req.isAuthenticated()) {
-      return res.status(401).send("Not authenticated");
-    }
-    const exerciseId = parseInt(req.params.exerciseId);
-    const [progress] = await db
-      .select()
-      .from(userProgress)
-      .where(
-        and(
-          eq(userProgress.userId, req.user.id),
-          eq(userProgress.exerciseId, exerciseId)
-        )
-      );
+    try {
+      const exerciseId = parseInt(req.params.exerciseId);
+      const userId = req.user?.id;
 
-    res.json(progress || null);
+      if (!userId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      let progress = await prisma.userProgress.findFirst({
+        where: {
+          userId,
+          exerciseId
+        },
+        include: {
+          feedback: {
+            orderBy: { createdAt: 'desc' }
+          }
+        }
+      });
+
+      if (!progress) {
+        progress = await prisma.userProgress.create({
+          data: {
+            userId,
+            exerciseId
+          },
+          include: {
+            feedback: true
+          }
+        });
+      }
+
+      res.json(progress);
+    } catch (error) {
+      console.error("Error fetching progress:", error);
+      res.status(500).json({ message: "Failed to fetch progress" });
+    }
   });
 
   // Update exercise progress
@@ -388,46 +389,43 @@ export function registerRoutes(app: Express): Server {
     const exerciseId = parseInt(req.params.exerciseId);
     const { videoUrl, completed } = req.body;
 
-    const [existing] = await db
-      .select()
-      .from(userProgress)
-      .where(
-        and(
-          eq(userProgress.userId, req.user.id),
-          eq(userProgress.exerciseId, exerciseId)
-        )
-      );
+    const existing = await prisma.userProgress.findFirst({
+      where: {
+        userId: req.user.id,
+        exerciseId: exerciseId
+      }
+    });
 
     if (existing) {
       // If updating with a new video URL, clear any existing AI feedback
       if (videoUrl && existing.videoUrl !== videoUrl) {
-        await db
-          .delete(feedback)
-          .where(
-            and(
-              eq(feedback.progressId, existing.id),
-              eq(feedback.isAiGenerated, true)
-            )
-          );
+        await prisma.feedback.deleteMany({
+          where: {
+            progressId: existing.id,
+            isAiGenerated: true
+          }
+        });
       }
 
-      const [updated] = await db
-        .update(userProgress)
-        .set({ videoUrl, completed, updatedAt: new Date() })
-        .where(eq(userProgress.id, existing.id))
-        .returning();
+      const updated = await prisma.userProgress.update({
+        where: { id: existing.id },
+        data: {
+          videoUrl,
+          completed,
+          updatedAt: new Date()
+        }
+      });
       return res.json(updated);
     }
 
-    const [progress] = await db
-      .insert(userProgress)
-      .values({
+    const progress = await prisma.userProgress.create({
+      data: {
         userId: req.user.id,
         exerciseId,
         videoUrl,
         completed,
-      })
-      .returning();
+      }
+    });
 
     res.json(progress);
   });
@@ -442,28 +440,24 @@ export function registerRoutes(app: Express): Server {
     const { content, rating } = req.body;
 
     // Verify that the progress belongs to the user
-    const [userProgressRecord] = await db
-      .select()
-      .from(userProgress)
-      .where(
-        and(
-          eq(userProgress.id, progressId),
-          eq(userProgress.userId, req.user.id)
-        )
-      );
+    const userProgressRecord = await prisma.userProgress.findFirst({
+      where: {
+        id: progressId,
+        userId: req.user.id
+      }
+    });
 
     if (!userProgressRecord) {
       return res.status(404).send("Progress record not found");
     }
 
-    const [newFeedback] = await db
-      .insert(feedback)
-      .values({
+    const newFeedback = await prisma.feedback.create({
+      data: {
         progressId,
         content,
         rating,
-      })
-      .returning();
+      }
+    });
 
     res.json(newFeedback);
   });
@@ -472,17 +466,16 @@ export function registerRoutes(app: Express): Server {
   app.post("/api/admin/exercises", isAdmin, async (req, res) => {
     const { title, description, demoVideoUrl, professionalAnswerUrl, order, pdfUrl } = req.body;
 
-    const [exercise] = await db
-      .insert(exercises)
-      .values({
+    const exercise = await prisma.exercise.create({
+      data: {
         title,
         description,
         demoVideoUrl,
         professionalAnswerUrl,
         pdfUrl,
         order,
-      })
-      .returning();
+      }
+    });
 
     res.json(exercise);
   });
@@ -492,9 +485,9 @@ export function registerRoutes(app: Express): Server {
     const exerciseId = parseInt(req.params.id);
     const { title, description, demoVideoUrl, professionalAnswerUrl, order, pdfUrl } = req.body;
 
-    const [updated] = await db
-      .update(exercises)
-      .set({
+    const updated = await prisma.exercise.update({
+      where: { id: exerciseId },
+      data: {
         title,
         description,
         demoVideoUrl,
@@ -502,9 +495,8 @@ export function registerRoutes(app: Express): Server {
         pdfUrl,
         order,
         updatedAt: new Date()
-      })
-      .where(eq(exercises.id, exerciseId))
-      .returning();
+      }
+    });
 
     if (!updated) {
       return res.status(404).send("Exercise not found");
@@ -518,41 +510,40 @@ export function registerRoutes(app: Express): Server {
     const exerciseId = parseInt(req.params.id);
 
     // First check if there's any user progress for this exercise
-    const progressRecords = await db
-      .select()
-      .from(userProgress)
-      .where(eq(userProgress.exerciseId, exerciseId));
+    const progressRecords = await prisma.userProgress.findMany({
+      where: { exerciseId: exerciseId }
+    });
 
     if (progressRecords.length > 0) {
       // Delete all related progress records first
-      await db
-        .delete(userProgress)
-        .where(eq(userProgress.exerciseId, exerciseId));
+      await prisma.userProgress.deleteMany({
+        where: { exerciseId: exerciseId }
+      });
     }
 
-    const [deleted] = await db
-      .delete(exercises)
-      .where(eq(exercises.id, exerciseId))
-      .returning();
-
-    if (!deleted) {
+    try {
+      await prisma.exercise.delete({
+        where: {
+          id: exerciseId,
+        },
+      });
+      res.json({ message: "Exercise deleted successfully" });
+    } catch (e) {
       return res.status(404).send("Exercise not found");
     }
-
-    res.json({ message: "Exercise deleted successfully" });
   });
 
   app.get("/api/admin/progress", isAdmin, async (req, res) => {
-    const progress = await db.query.userProgress.findMany({
-      with: {
+    const progress = await prisma.userProgress.findMany({
+      include: {
         user: {
-          columns: {
+          select: {
             username: true,
             email: true,
           }
         },
         exercise: {
-          columns: {
+          select: {
             title: true,
           }
         }
@@ -564,15 +555,14 @@ export function registerRoutes(app: Express): Server {
   app.post("/api/admin/progress/:id/reset", isAdmin, async (req, res) => {
     const progressId = parseInt(req.params.id);
 
-    const [updated] = await db
-      .update(userProgress)
-      .set({
+    const updated = await prisma.userProgress.update({
+      where: { id: progressId },
+      data: {
         completed: false,
         videoUrl: null,
         updatedAt: new Date()
-      })
-      .where(eq(userProgress.id, progressId))
-      .returning();
+      }
+    });
 
     if (!updated) {
       return res.status(404).send("Progress record not found");
@@ -585,11 +575,9 @@ export function registerRoutes(app: Express): Server {
   app.post("/api/forgot-password", async (req, res) => {
     const { email } = req.body;
 
-    const [user] = await db
-      .select()
-      .from(users)
-      .where(eq(users.email, email))
-      .limit(1);
+    const user = await prisma.user.findFirst({
+      where: { email: email }
+    });
 
     if (!user) {
       // Don't reveal if email exists
@@ -597,9 +585,9 @@ export function registerRoutes(app: Express): Server {
     }
 
     // Delete any existing reset tokens for this user
-    await db
-      .delete(passwordResetTokens)
-      .where(eq(passwordResetTokens.userId, user.id));
+    await prisma.passwordResetToken.deleteMany({
+      where: { userId: user.id }
+    });
 
     const resetToken = await generateResetToken(user.id);
 
@@ -615,34 +603,38 @@ export function registerRoutes(app: Express): Server {
   app.post("/api/reset-password", async (req, res) => {
     const { token, newPassword } = req.body;
 
-    const [resetToken] = await db
-      .select()
-      .from(passwordResetTokens)
-      .where(
-        and(
-          eq(passwordResetTokens.token, token),
-          gt(passwordResetTokens.expiresAt, new Date())
-        )
-      )
-      .limit(1);
+    const resetToken = await prisma.passwordResetToken.findFirst({
+      where: {
+        token: token,
+        expiresAt: { gt: new Date() }
+      }
+    });
 
     if (!resetToken) {
       return res.status(400).send("Invalid or expired reset token");
     }
 
     // Hash the new password
-    const hashedPassword = await crypto.hash(newPassword);
+    const hashedPassword = await new Promise((resolve, reject) => {
+      crypto.hash(newPassword, (err, derivedKey) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(derivedKey.toString('hex'));
+        }
+      });
+    }) as string;
 
     // Update the user's password
-    await db
-      .update(users)
-      .set({ password: hashedPassword })
-      .where(eq(users.id, resetToken.userId));
+    await prisma.user.update({
+      where: { id: resetToken.userId },
+      data: { password: hashedPassword }
+    });
 
     // Delete the used token
-    await db
-      .delete(passwordResetTokens)
-      .where(eq(passwordResetTokens.id, resetToken.id));
+    await prisma.passwordResetToken.delete({
+      where: { id: resetToken.id }
+    });
 
     res.json({ message: "Password updated successfully" });
   });
@@ -663,33 +655,36 @@ export function registerRoutes(app: Express): Server {
       return res.status(400).json({ message: "Password cannot be empty" });
     }
 
-    const [user] = await db
-      .select()
-      .from(users)
-      .where(eq(users.id, userId))
-      .limit(1);
+    const user = await prisma.user.findUnique({
+      where: { id: userId }
+    });
 
     if (!user) {
       return res.status(404).send("User not found");
     }
 
     try {
-      // Import crypto helper from auth module
-      const { crypto } = await import("./auth");
-      
       // Hash the new password
-      const hashedPassword = await crypto.hash(trimmedPassword);
+      const hashedPassword = await new Promise((resolve, reject) => {
+        crypto.hash(trimmedPassword, (err, derivedKey) => {
+          if (err) {
+            reject(err);
+          } else {
+            resolve(derivedKey.toString('hex'));
+          }
+        });
+      }) as string;
 
       // Update the user's password
-      await db
-        .update(users)
-        .set({ password: hashedPassword })
-        .where(eq(users.id, userId));
+      await prisma.user.update({
+        where: { id: userId },
+        data: { password: hashedPassword }
+      });
 
       // Delete any existing reset tokens
-      await db
-        .delete(passwordResetTokens)
-        .where(eq(passwordResetTokens.userId, userId));
+      await prisma.passwordResetToken.deleteMany({
+        where: { userId: userId }
+      });
 
       console.log("Password reset successful for user:", userId);
       res.json({ message: "Password reset successfully" });
@@ -699,49 +694,54 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // Run tool's Python code endpoint
-  app.post("/api/tools/:id/run", async (req, res) => {
-    if (!req.isAuthenticated()) {
-      return res.status(401).json({ message: "Not authenticated" });
-    }
-
+  // Tools endpoints
+  app.get("/api/tools", async (req, res) => {
     try {
-      const { tools } = await import("@db/schema");
+      const tools = await prisma.tool.findMany({
+        where: { isActive: true },
+        orderBy: { createdAt: 'desc' }
+      });
+      res.json(tools);
+    } catch (error) {
+      console.error("Error fetching tools:", error);
+      res.status(500).json({ message: "Failed to fetch tools" });
+    }
+  });
+
+  app.post("/api/tools/:id/run", async (req, res) => {
+    try {
       const toolId = parseInt(req.params.id);
       const { userInput } = req.body;
 
-      // Get the tool and its Python code
-      const [tool] = await db
-        .select()
-        .from(tools)
-        .where(and(eq(tools.id, toolId), eq(tools.isActive, true)));
-
-      if (!tool) {
-        return res.status(404).json({ error: "Tool not found or inactive" });
-      }
-
-      if (!tool.pythonCode || tool.pythonCode.trim() === '') {
-        return res.json({ output: "This tool doesn't have any configured functionality yet." });
-      }
-
-      // Prepare the Python code with user input if provided
-      let codeToRun = tool.pythonCode;
-      
-      // If user input is provided, make it available as a variable
-      if (userInput && userInput.trim()) {
-        codeToRun = `user_input = """${userInput.replace(/"""/g, '\\"""')}"""\n\n${codeToRun}`;
-      }
-
-      // Create a temporary file with the Python code
-      const tempFileName = `/tmp/tool_${toolId}_${Date.now()}.py`;
-      fs.writeFileSync(tempFileName, codeToRun);
-
-      // Execute the Python code
-      const pythonProcess = spawn('python3', [tempFileName], {
-        timeout: 10000, // 10 second timeout
-        stdio: ['pipe', 'pipe', 'pipe']
+      const tool = await prisma.tool.findUnique({
+        where: { id: toolId }
       });
 
+      if (!tool || !tool.pythonCode) {
+        return res.status(404).json({ error: "Tool not found or no Python code configured" });
+      }
+
+      const tempDir = path.join(process.cwd(), 'temp');
+      if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true });
+      }
+
+      const scriptPath = path.join(tempDir, `tool_${toolId}_${Date.now()}.py`);
+
+      const pythonScript = `
+import sys
+import json
+
+# User input
+user_input = """${userInput.replace(/"/g, '\\"')}"""
+
+# Tool code
+${tool.pythonCode}
+`;
+
+      fs.writeFileSync(scriptPath, pythonScript);
+
+      const pythonProcess = spawn('python3', [scriptPath]);
       let output = '';
       let errorOutput = '';
 
@@ -754,34 +754,26 @@ export function registerRoutes(app: Express): Server {
       });
 
       pythonProcess.on('close', (code) => {
-        // Clean up temporary file
-        try {
-          fs.unlinkSync(tempFileName);
-        } catch (cleanupError) {
-          console.warn('Failed to clean up temp file:', cleanupError);
+        fs.unlinkSync(scriptPath);
+
+        if (code !== 0) {
+          return res.status(500).json({ error: errorOutput || 'Python script execution failed' });
         }
 
-        if (code === 0) {
-          res.json({ output: output || 'Tool executed successfully' });
-        } else {
-          res.status(400).json({ error: errorOutput || 'Tool execution failed' });
-        }
+        res.json({ output: output.trim() });
       });
 
-      pythonProcess.on('error', (error) => {
-        // Clean up temporary file
-        try {
-          fs.unlinkSync(tempFileName);
-        } catch (cleanupError) {
-          console.warn('Failed to clean up temp file:', cleanupError);
+      setTimeout(() => {
+        pythonProcess.kill();
+        if (fs.existsSync(scriptPath)) {
+          fs.unlinkSync(scriptPath);
         }
-        
-        res.status(500).json({ error: `Failed to execute tool: ${error.message}` });
-      });
+        res.status(408).json({ error: 'Script execution timeout' });
+      }, 30000);
 
     } catch (error) {
-      console.error('Tool execution error:', error);
-      res.status(500).json({ error: 'Internal server error during tool execution' });
+      console.error("Error running tool:", error);
+      res.status(500).json({ error: "Failed to execute tool" });
     }
   });
 
@@ -837,7 +829,7 @@ export function registerRoutes(app: Express): Server {
         } catch (cleanupError) {
           console.warn('Failed to clean up temp file:', cleanupError);
         }
-        
+
         res.status(500).json({ error: `Failed to execute Python code: ${error.message}` });
       });
 
@@ -881,10 +873,10 @@ export function registerRoutes(app: Express): Server {
 
       // Read the file from tempFilePath
       const fileBuffer = fs.readFileSync(videoFile.tempFilePath);
-      console.log("Video file details:", { 
-        name: videoFile.name, 
-        size: fileBuffer.length, 
-        mimetype: videoFile.mimetype 
+      console.log("Video file details:", {
+        name: videoFile.name,
+        size: fileBuffer.length,
+        mimetype: videoFile.mimetype
       });
 
       // Generate unique filename
@@ -910,10 +902,10 @@ export function registerRoutes(app: Express): Server {
         console.error("Object storage upload failed:", uploadError);
 
         if (uploadError.message.includes('Error code undefined')) {
-          return res.status(503).json({ 
-            message: "Object storage service is currently unavailable. Please try again later.", 
+          return res.status(503).json({
+            message: "Object storage service is currently unavailable. Please try again later.",
             error: "Service temporarily unavailable",
-            retry: true 
+            retry: true
           });
         }
 
@@ -922,9 +914,9 @@ export function registerRoutes(app: Express): Server {
       }
     } catch (error) {
       console.error("Error uploading video:", error);
-      res.status(500).json({ 
-        message: "Failed to upload video", 
-        error: error instanceof Error ? error.message : "Unknown error" 
+      res.status(500).json({
+        message: "Failed to upload video",
+        error: error instanceof Error ? error.message : "Unknown error"
       });
     }
   });
@@ -941,29 +933,29 @@ export function registerRoutes(app: Express): Server {
 
       // Debug: Check bucket configuration
       console.log("Object storage bucket ID:", process.env.REPLIT_DB_URL ? "Using DB" : "Using object storage");
-      
+
       // First check if the file exists by listing files
       try {
         console.log("Attempting to list object storage contents...");
         const listResult = await objectStorage.list();
         console.log("Object storage list result:", JSON.stringify(listResult, null, 2));
-        
+
         if (listResult.ok && listResult.value) {
           const fileExists = listResult.value.some(item => item.name === filename);
           console.log(`File ${filename} exists in storage:`, fileExists);
           if (!fileExists) {
             console.log("Available files:", listResult.value.map(item => ({ name: item.name, size: item.size })));
-            return res.status(404).json({ 
-              message: "Video file not found", 
+            return res.status(404).json({
+              message: "Video file not found",
               filename,
-              availableFiles: listResult.value.map(item => item.name) 
+              availableFiles: listResult.value.map(item => item.name)
             });
           }
         } else if (!listResult.ok) {
           console.error("Object storage list failed:", listResult.error);
           // Don't fail completely, try to download anyway
         }
-      } catch (listError) {
+      }catch (listError) {
         console.error("Object storage list exception:", listError);
         // Continue with download attempt
       }
@@ -993,21 +985,21 @@ export function registerRoutes(app: Express): Server {
         } else {
           console.error("Object storage error response:", response);
           console.error("Full error object:", JSON.stringify(response.error, null, 2));
-          
+
           // Handle specific error cases
           if (response.error?.message?.includes('Error code undefined')) {
             console.error("Object storage service appears to be having issues");
-            return res.status(503).json({ 
-              message: "Video service temporarily unavailable", 
+            return res.status(503).json({
+              message: "Video service temporarily unavailable",
               error: "Object storage service error",
               filename,
-              retry: true 
+              retry: true
             });
           }
-          
-          const errorMsg = response.error?.message || 
-                          (typeof response.error === 'string' ? response.error : 'Unknown storage error') ||
-                          'Object storage request failed';
+
+          const errorMsg = response.error?.message ||
+            (typeof response.error === 'string' ? response.error : 'Unknown storage error') ||
+            'Object storage request failed';
           throw new Error(`Object storage error: ${errorMsg}`);
         }
       } else if (videoData && typeof videoData === 'object' && 'value' in videoData) {
@@ -1069,7 +1061,7 @@ export function registerRoutes(app: Express): Server {
 
     try {
       console.log("Running comprehensive object storage health check...");
-      
+
       // Check environment variables
       const envStatus = {
         REPLIT_OBJECT_STORAGE_BUCKET_ID: process.env.REPLIT_OBJECT_STORAGE_BUCKET_ID || "Not set",
@@ -1077,7 +1069,7 @@ export function registerRoutes(app: Express): Server {
         explicitBucketId: BUCKET_ID
       };
       console.log("Environment status:", envStatus);
-      
+
       // Try to create a fresh client
       let freshClientTest;
       try {
@@ -1088,7 +1080,7 @@ export function registerRoutes(app: Express): Server {
         console.error("Fresh client test failed:", freshClientError);
         freshClientTest = { error: freshClientError.message };
       }
-      
+
       // Test basic list operation with existing client
       let listResult;
       try {
@@ -1098,17 +1090,17 @@ export function registerRoutes(app: Express): Server {
         console.error("List operation failed:", listError);
         listResult = { error: listError.message };
       }
-      
+
       // Test upload with a small file
       const testData = Buffer.from("test-data-" + Date.now());
       const testFilename = `test/health-check-${Date.now()}.txt`;
-      
+
       let uploadResult, downloadResult, deleteResult;
-      
+
       try {
         uploadResult = await objectStorage.uploadFromBytes(testFilename, testData);
         console.log("Upload test result:", JSON.stringify(uploadResult, null, 2));
-        
+
         if (uploadResult && uploadResult.ok) {
           try {
             downloadResult = await objectStorage.downloadAsBytes(testFilename);
@@ -1116,7 +1108,7 @@ export function registerRoutes(app: Express): Server {
           } catch (downloadError) {
             downloadResult = { error: downloadError.message };
           }
-          
+
           try {
             deleteResult = await objectStorage.delete(testFilename);
             console.log("Delete test result:", JSON.stringify(deleteResult, null, 2));
@@ -1128,7 +1120,7 @@ export function registerRoutes(app: Express): Server {
         console.error("Object storage test operation failed:", testError);
         uploadResult = { error: testError.message };
       }
-      
+
       res.json({
         timestamp: new Date().toISOString(),
         environment: envStatus,
@@ -1140,7 +1132,7 @@ export function registerRoutes(app: Express): Server {
       });
     } catch (error) {
       console.error("Storage health check error:", error);
-      res.status(500).json({ 
+      res.status(500).json({
         error: error.message,
         timestamp: new Date().toISOString()
       });
@@ -1184,50 +1176,43 @@ export function registerRoutes(app: Express): Server {
     const progressId = parseInt(req.params.progressId);
 
     // Verify that the progress record exists and has a video
-    const [userProgressRecord] = await db
-      .select()
-      .from(userProgress)
-      .where(eq(userProgress.id, progressId));
+    const userProgressRecord = await prisma.userProgress.findFirst({
+      where: { id: progressId }
+    });
 
     if (!userProgressRecord || !userProgressRecord.videoUrl) {
       return res.status(404).send("Progress record not found or no video submitted");
     }
 
     // Check if AI feedback already exists and delete it if found (to allow reanalysis)
-    const existingAiFeedback = await db
-      .select()
-      .from(feedback)
-      .where(
-        and(
-          eq(feedback.progressId, progressId),
-          eq(feedback.isAiGenerated, true)
-        )
-      );
+    const existingAiFeedback = await prisma.feedback.findMany({
+      where: {
+        progressId: progressId,
+        isAiGenerated: true
+      }
+    });
 
     if (existingAiFeedback.length > 0) {
       // Delete existing AI feedback to allow fresh analysis
-      await db
-        .delete(feedback)
-        .where(
-          and(
-            eq(feedback.progressId, progressId),
-            eq(feedback.isAiGenerated, true)
-          )
-        );
+      await prisma.feedback.deleteMany({
+        where: {
+          progressId: progressId,
+          isAiGenerated: true
+        }
+      });
     }
 
     // Create pending AI feedback record
-    const [aiFeedback] = await db
-      .insert(feedback)
-      .values({
+    const aiFeedback = await prisma.feedback.create({
+      data: {
         progressId,
         content: "AI analysis pending...",
         rating: 3, // Default neutral rating
         isAiGenerated: true,
         aiAnalysisStatus: "pending",
         aiConfidenceScore: null,
-      })
-      .returning();
+      }
+    });
 
     // Simulate AI processing (replace with actual AI call later)
     setTimeout(async () => {
@@ -1245,15 +1230,12 @@ export function registerRoutes(app: Express): Server {
 
     const progressId = parseInt(req.params.progressId);
 
-    const [aiFeedback] = await db
-      .select()
-      .from(feedback)
-      .where(
-        and(
-          eq(feedback.progressId, progressId),
-          eq(feedback.isAiGenerated, true)
-        )
-      );
+    const aiFeedback = await prisma.feedback.findFirst({
+      where: {
+        progressId: progressId,
+        isAiGenerated: true
+      }
+    });
 
     res.json(aiFeedback || null);
   });
@@ -1293,148 +1275,142 @@ export function registerRoutes(app: Express): Server {
       }
     } catch (error) {
       console.error("Error deleting video:", error);
-      res.status(500).json({ 
-        message: "Failed to delete video", 
-        error: error instanceof Error ? error.message : "Unknown error" 
+      res.status(500).json({
+        message: "Failed to delete video",
+        error: error instanceof Error ? error.message : "Unknown error"
       });
     }
   });
 
-  // AI Models API endpoints
-  app.get("/api/admin/ai-models", isAdmin, async (req, res) => {
+  // Admin endpoints
+  app.get("/api/admin/tools", async (req, res) => {
     try {
-      const { aiModels } = await import("@db/schema");
-      const allModels = await db
-        .select()
-        .from(aiModels)
-        .orderBy(aiModels.createdAt);
+      if (!req.user?.isAdmin) {
+        return res.status(403).json({ message: "Admin access required" });
+      }
 
-      // Don't send API keys in response
-      const modelsWithoutKeys = allModels.map(model => ({
-        ...model,
-        apiKey: model.apiKey ? '••••••••' : '',
-        temperature: model.temperature / 100 // Convert back to decimal
-      }));
+      const tools = await prisma.tool.findMany({
+        orderBy: { createdAt: 'desc' }
+      });
+      res.json(tools);
+    } catch (error) {
+      console.error("Error fetching tools:", error);
+      res.status(500).json({ message: "Failed to fetch tools" });
+    }
+  });
 
-      res.json(modelsWithoutKeys);
+  app.post("/api/admin/tools", async (req, res) => {
+    try {
+      if (!req.user?.isAdmin) {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const tool = await prisma.tool.create({
+        data: req.body
+      });
+      res.json(tool);
+    } catch (error) {
+      console.error("Error creating tool:", error);
+      res.status(500).json({ message: "Failed to create tool" });
+    }
+  });
+
+  app.put("/api/admin/tools/:id", async (req, res) => {
+    try {
+      if (!req.user?.isAdmin) {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const id = parseInt(req.params.id);
+      const tool = await prisma.tool.update({
+        where: { id },
+        data: req.body
+      });
+      res.json(tool);
+    } catch (error) {
+      console.error("Error updating tool:", error);
+      res.status(500).json({ message: "Failed to update tool" });
+    }
+  });
+
+  app.delete("/api/admin/tools/:id", async (req, res) => {
+    try {
+      if (!req.user?.isAdmin) {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const id = parseInt(req.params.id);
+      await prisma.tool.delete({
+        where: { id }
+      });
+      res.json({ message: "Tool deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting tool:", error);
+      res.status(500).json({ message: "Failed to delete tool" });
+    }
+  });
+
+  // AI Models endpoints
+  app.get("/api/admin/ai-models", async (req, res) => {
+    try {
+      if (!req.user?.isAdmin) {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const models = await prisma.aIModel.findMany({
+        orderBy: { createdAt: 'desc' }
+      });
+      res.json(models);
     } catch (error) {
       console.error("Error fetching AI models:", error);
       res.status(500).json({ message: "Failed to fetch AI models" });
     }
   });
 
-  app.post("/api/admin/ai-models", isAdmin, async (req, res) => {
+  app.post("/api/admin/ai-models", async (req, res) => {
     try {
-      const { aiModels } = await import("@db/schema");
-      const { name, provider, apiKey, endpoint, model, temperature, maxTokens, systemPrompt, isActive, isDefault } = req.body;
-
-      if (!name || !provider || !apiKey || !endpoint || !model || !systemPrompt) {
-        return res.status(400).json({ message: "All required fields must be provided" });
+      if (!req.user?.isAdmin) {
+        return res.status(403).json({ message: "Admin access required" });
       }
 
-      // If this is set as default, unset any existing default
-      if (isDefault) {
-        await db
-          .update(aiModels)
-          .set({ isDefault: false })
-          .where(eq(aiModels.isDefault, true));
-      }
-
-      const [newModel] = await db
-        .insert(aiModels)
-        .values({
-          name,
-          provider,
-          apiKey,
-          endpoint,
-          model,
-          temperature: Math.round(temperature * 100), // Store as integer
-          maxTokens,
-          systemPrompt,
-          isActive: isActive !== undefined ? isActive : true,
-          isDefault: isDefault !== undefined ? isDefault : false,
-        })
-        .returning();
-
-      // Don't return API key
-      const responseModel = { ...newModel, apiKey: '••••••••', temperature: newModel.temperature / 100 };
-      res.json(responseModel);
+      const model = await prisma.aIModel.create({
+        data: req.body
+      });
+      res.json(model);
     } catch (error) {
       console.error("Error creating AI model:", error);
       res.status(500).json({ message: "Failed to create AI model" });
     }
   });
 
-  app.put("/api/admin/ai-models/:id", isAdmin, async (req, res) => {
+  app.put("/api/admin/ai-models/:id", async (req, res) => {
     try {
-      const { aiModels } = await import("@db/schema");
-      const modelId = parseInt(req.params.id);
-      const { name, provider, apiKey, endpoint, model, temperature, maxTokens, systemPrompt, isActive, isDefault } = req.body;
-
-      if (!name || !provider || !endpoint || !model || !systemPrompt) {
-        return res.status(400).json({ message: "All required fields must be provided" });
+      if (!req.user?.isAdmin) {
+        return res.status(403).json({ message: "Admin access required" });
       }
 
-      // If this is set as default, unset any existing default
-      if (isDefault) {
-        await db
-          .update(aiModels)
-          .set({ isDefault: false })
-          .where(eq(aiModels.isDefault, true));
-      }
-
-      // Prepare update object - only include apiKey if provided
-      const updateData: any = {
-        name,
-        provider,
-        endpoint,
-        model,
-        temperature: Math.round(temperature * 100), // Store as integer
-        maxTokens,
-        systemPrompt,
-        isActive: isActive !== undefined ? isActive : true,
-        isDefault: isDefault !== undefined ? isDefault : false,
-        updatedAt: new Date(),
-      };
-
-      // Only update API key if provided
-      if (apiKey && apiKey.trim()) {
-        updateData.apiKey = apiKey;
-      }
-
-      const [updatedModel] = await db
-        .update(aiModels)
-        .set(updateData)
-        .where(eq(aiModels.id, modelId))
-        .returning();
-
-      if (!updatedModel) {
-        return res.status(404).json({ message: "AI model not found" });
-      }
-
-      // Don't return API key
-      const responseModel = { ...updatedModel, apiKey: '••••••••', temperature: updatedModel.temperature / 100 };
-      res.json(responseModel);
+      const id = parseInt(req.params.id);
+      const model = await prisma.aIModel.update({
+        where: { id },
+        data: req.body
+      });
+      res.json(model);
     } catch (error) {
       console.error("Error updating AI model:", error);
       res.status(500).json({ message: "Failed to update AI model" });
     }
   });
 
-  app.delete("/api/admin/ai-models/:id", isAdmin, async (req, res) => {
+  app.delete("/api/admin/ai-models/:id", async (req, res) => {
     try {
-      const { aiModels } = await import("@db/schema");
-      const modelId = parseInt(req.params.id);
-
-      const [deletedModel] = await db
-        .delete(aiModels)
-        .where(eq(aiModels.id, modelId))
-        .returning();
-
-      if (!deletedModel) {
-        return res.status(404).json({ message: "AI model not found" });
+      if (!req.user?.isAdmin) {
+        return res.status(403).json({ message: "Admin access required" });
       }
 
+      const id = parseInt(req.params.id);
+      await prisma.aIModel.delete({
+        where: { id }
+      });
       res.json({ message: "AI model deleted successfully" });
     } catch (error) {
       console.error("Error deleting AI model:", error);
@@ -1444,13 +1420,11 @@ export function registerRoutes(app: Express): Server {
 
   app.post("/api/admin/ai-models/:id/test", isAdmin, async (req, res) => {
     try {
-      const { aiModels } = await import("@db/schema");
       const modelId = parseInt(req.params.id);
 
-      const [model] = await db
-        .select()
-        .from(aiModels)
-        .where(eq(aiModels.id, modelId));
+      const model = await prisma.aIModel.findUnique({
+        where: { id: modelId }
+      });
 
       if (!model) {
         return res.status(404).json({ message: "AI model not found" });
@@ -1459,11 +1433,11 @@ export function registerRoutes(app: Express): Server {
       // Test video processing for Gemini models
       if (model.provider === 'google' || model.provider === 'gemini') {
         try {
-          const videoProcessor = new VideoProcessor(model.apiKey);
+          const videoProcessor = new (await import("./video-processor")).VideoProcessor(model.apiKey);
           const isConnected = await videoProcessor.testConnection();
-          
-          res.json({ 
-            success: isConnected, 
+
+          res.json({
+            success: isConnected,
             response: isConnected ? 'Video processing API connection successful' : 'API connection failed',
             model: model.name,
             hasVideoProcessing: true
@@ -1529,10 +1503,10 @@ export function registerRoutes(app: Express): Server {
         }
 
         // Use the modified endpoint for Gemini
-        const apiEndpoint = (model.provider === 'google' || model.provider === 'gemini') 
-          ? (model.endpoint.includes('?') 
-              ? `${model.endpoint}&key=${model.apiKey}`
-              : `${model.endpoint}?key=${model.apiKey}`)
+        const apiEndpoint = (model.provider === 'google' || model.provider === 'gemini')
+          ? (model.endpoint.includes('?')
+            ? `${model.endpoint}&key=${model.apiKey}`
+            : `${model.endpoint}?key=${model.apiKey}`)
           : model.endpoint;
 
         const response = await fetch(apiEndpoint, {
@@ -1557,8 +1531,8 @@ export function registerRoutes(app: Express): Server {
           aiResponse = data.choices?.[0]?.message?.content || 'No response content';
         }
 
-        res.json({ 
-          success: true, 
+        res.json({
+          success: true,
           response: aiResponse,
           model: model.name,
           hasVideoProcessing: false
@@ -1568,38 +1542,20 @@ export function registerRoutes(app: Express): Server {
       }
     } catch (error) {
       console.error("Error testing AI model:", error);
-      res.status(500).json({ 
+      res.status(500).json({
         message: "Failed to test AI model",
-        error: error.message 
+        error: error.message
       });
-    }
-  });
-
-  // Tools API endpoints
-  app.get("/api/tools", async (req, res) => {
-    try {
-      const { tools } = await import("@db/schema");
-      const activeTools = await db
-        .select()
-        .from(tools)
-        .where(eq(tools.isActive, true))
-        .orderBy(tools.createdAt);
-      res.json(activeTools);
-    } catch (error) {
-      console.error("Error fetching tools:", error);
-      res.status(500).json({ message: "Failed to fetch tools" });
     }
   });
 
   // Admin tools endpoints
   app.get("/api/admin/tools", isAdmin, async (req, res) => {
     try {
-      const { tools } = await import("@db/schema");
-      const allTools = await db
-        .select()
-        .from(tools)
-        .orderBy(tools.createdAt);
-      res.json(allTools);
+      const tools = await prisma.tool.findMany({
+        orderBy: { createdAt: 'desc' }
+      });
+      res.json(tools);
     } catch (error) {
       console.error("Error fetching admin tools:", error);
       res.status(500).json({ message: "Failed to fetch tools" });
@@ -1608,24 +1564,22 @@ export function registerRoutes(app: Express): Server {
 
   app.post("/api/admin/tools", isAdmin, async (req, res) => {
     try {
-      const { tools } = await import("@db/schema");
       const { title, description, downloadUrl, images, pythonCode, isActive } = req.body;
 
       if (!title || !description || !downloadUrl) {
         return res.status(400).json({ message: "Title, description, and download URL are required" });
       }
 
-      const [newTool] = await db
-        .insert(tools)
-        .values({
+      const newTool = await prisma.tool.create({
+        data: {
           title,
           description,
           downloadUrl,
           images: images || [],
           pythonCode: pythonCode || null,
           isActive: isActive !== undefined ? isActive : true,
-        })
-        .returning();
+        }
+      });
 
       res.json(newTool);
     } catch (error) {
@@ -1636,17 +1590,18 @@ export function registerRoutes(app: Express): Server {
 
   app.put("/api/admin/tools/:id", isAdmin, async (req, res) => {
     try {
-      const { tools } = await import("@db/schema");
-      const toolId = parseInt(req.params.id);
       const { title, description, downloadUrl, images, pythonCode, isActive } = req.body;
+      const toolId = parseInt(req.params.id);
 
       if (!title || !description || !downloadUrl) {
         return res.status(400).json({ message: "Title, description, and download URL are required" });
       }
 
-      const [updatedTool] = await db
-        .update(tools)
-        .set({
+      const updatedTool = await prisma.tool.update({
+        where: {
+          id: toolId,
+        },
+        data: {
           title,
           description,
           downloadUrl,
@@ -1654,13 +1609,8 @@ export function registerRoutes(app: Express): Server {
           pythonCode: pythonCode || null,
           isActive: isActive !== undefined ? isActive : true,
           updatedAt: new Date(),
-        })
-        .where(eq(tools.id, toolId))
-        .returning();
-
-      if (!updatedTool) {
-        return res.status(404).json({ message: "Tool not found" });
-      }
+        }
+      });
 
       res.json(updatedTool);
     } catch (error) {
@@ -1671,13 +1621,13 @@ export function registerRoutes(app: Express): Server {
 
   app.delete("/api/admin/tools/:id", isAdmin, async (req, res) => {
     try {
-      const { tools } = await import("@db/schema");
       const toolId = parseInt(req.params.id);
 
-      const [deletedTool] = await db
-        .delete(tools)
-        .where(eq(tools.id, toolId))
-        .returning();
+      const deletedTool = await prisma.tool.delete({
+        where: {
+          id: toolId,
+        },
+      });
 
       if (!deletedTool) {
         return res.status(404).json({ message: "Tool not found" });
