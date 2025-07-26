@@ -1,0 +1,12 @@
+
+node_modules
+.git
+.env
+*.log
+dist
+.replit
+replit.nix
+migration
+temp
+attached_assets
+.config
