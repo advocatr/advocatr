@@ -1,5 +1,3 @@
-
-
 # Use Node.js 20 Alpine for smaller image size
 FROM node:20-alpine
 
@@ -9,14 +7,17 @@ WORKDIR /app
 # Copy package files from root
 COPY package*.json ./
 
-# Install dependencies
-RUN npm ci --only=production
+# Install ALL dependencies (including dev deps needed for build)
+RUN npm ci
 
 # Copy all source code except what's in .dockerignore
 COPY . .
 
 # Build the application
 RUN npm run build
+
+# Remove dev dependencies to reduce image size
+RUN npm prune --production
 
 # Expose the port Cloud Run expects
 EXPOSE 8080
@@ -35,6 +36,4 @@ USER nextjs
 
 # Start the application
 CMD ["npm", "start"]
-
-
 
