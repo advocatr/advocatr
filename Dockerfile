@@ -1,4 +1,5 @@
 
+
 # Use Node.js 20 Alpine for smaller image size
 FROM node:20-alpine
 
@@ -34,4 +35,6 @@ USER nextjs
 
 # Start the application
 CMD ["npm", "start"]
+
+
 
