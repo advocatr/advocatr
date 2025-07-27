@@ -61,7 +61,7 @@ export default function AboutPage() {
                     <p className="text-lg text-justify">
                       You can find out more about her practice as a barrister{" "}
                       <a 
-                        href="https://www.5essex.co.uk/profile/saara-idelbi/" 
+                        href="https://www.39essex.com/profile/saara-idelbi" 
                         className="text-primary hover:text-primary/80 underline underline-offset-4"
                       >
                         here
