@@ -9,7 +9,9 @@ WORKDIR /app
 
 # Install dependencies based on the preferred package manager
 COPY package.json package-lock.json* ./
+COPY prisma ./prisma
 RUN npm ci
+RUN npx prisma generate
 
 # Rebuild the source code only when needed
 FROM base AS builder
@@ -35,12 +37,15 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/package-lock.json ./package-lock.json
 
+# Copy prisma directory before generating client
+COPY --from=builder /app/prisma ./prisma
+
 # Install only production dependencies for the final image
 RUN npm ci --omit=dev
+RUN npx prisma generate
 
 # Copy necessary files for the application
 COPY --from=builder /app/db ./db
-COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/migrations ./migrations
 COPY --from=builder /app/setup-db.js ./setup-db.js
 

@@ -5,9 +5,21 @@ import session from "express-session";
 import createMemoryStore from "memorystore";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
-import { users, insertUserSchema, type User as SelectUser } from "@db/schema";
-import { db } from "@db";
-import { eq } from "drizzle-orm";
+import { prisma } from "@db/prisma";
+import { z } from "zod";
+
+const insertUserSchema = z.object({
+  username: z.string().min(3).max(50),
+  password: z.string().min(6),
+});
+
+type UserType = {
+  id: number;
+  username: string;
+  password: string;
+  createdAt: Date;
+  updatedAt: Date;
+};
 
 const scryptAsync = promisify(scrypt);
 export const crypto = {
@@ -34,7 +46,7 @@ export const crypto = {
 // extend express user object with our schema
 declare global {
   namespace Express {
-    interface User extends SelectUser { }
+    interface User extends UserType { }
   }
 }
 
@@ -64,11 +76,9 @@ export function setupAuth(app: Express) {
   passport.use(
     new LocalStrategy(async (username, password, done) => {
       try {
-        const [user] = await db
-          .select()
-          .from(users)
-          .where(eq(users.username, username))
-          .limit(1);
+        const user = await prisma.user.findUnique({
+          where: { username }
+        });
 
         if (!user) {
           return done(null, false, { message: "Incorrect username." });
@@ -90,11 +100,9 @@ export function setupAuth(app: Express) {
 
   passport.deserializeUser(async (id: number, done) => {
     try {
-      const [user] = await db
-        .select()
-        .from(users)
-        .where(eq(users.id, id))
-        .limit(1);
+      const user = await prisma.user.findUnique({
+        where: { id }
+      });
       done(null, user);
     } catch (err) {
       done(err);
@@ -113,11 +121,9 @@ export function setupAuth(app: Express) {
       const { username, password } = result.data;
 
       // Check if user already exists
-      const [existingUser] = await db
-        .select()
-        .from(users)
-        .where(eq(users.username, username))
-        .limit(1);
+      const existingUser = await prisma.user.findUnique({
+        where: { username }
+      });
 
       if (existingUser) {
         return res.status(400).send("Username already exists");
@@ -127,13 +133,12 @@ export function setupAuth(app: Express) {
       const hashedPassword = await crypto.hash(password);
 
       // Create the new user
-      const [newUser] = await db
-        .insert(users)
-        .values({
-          ...result.data,
+      const newUser = await prisma.user.create({
+        data: {
+          username,
           password: hashedPassword,
-        })
-        .returning();
+        }
+      });
 
       // Log the user in after registration
       req.login(newUser, (err) => {

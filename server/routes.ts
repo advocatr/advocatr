@@ -7,7 +7,7 @@ import path from "path";
 import crypto from "crypto";
 import { spawn } from "child_process";
 import { sendContactEmail } from "./email"; // Added import
-import { Client } from "@replit/object-storage";
+
 
 const BUCKET_ID = process.env['REPLIT_OBJECT_STORAGE_BUCKET_ID'] || 'db';
 
@@ -16,15 +16,9 @@ console.log("Object Storage Environment Variables:");
 console.log("REPLIT_OBJECT_STORAGE_BUCKET_ID:", process.env.REPLIT_OBJECT_STORAGE_BUCKET_ID);
 console.log("REPLIT_DB_URL:", process.env.REPLIT_DB_URL ? "Set" : "Not set");
 
-// Initialize object storage client (auto-detects bucket from .replit config)
-let objectStorage: Client;
-try {
-  objectStorage = new Client();
-  console.log("Object Storage client initialized successfully");
-} catch (initError) {
-  console.error("Failed to initialize Object Storage client:", initError);
-  throw new Error("Object Storage initialization failed");
-}
+// Object storage is disabled in Cloud Run environment
+let objectStorage: any = null;
+console.log("Object Storage disabled - using local file system instead");
 
 async function generateResetToken(userId: number) {
   const token = crypto.randomBytes(32).toString('hex');
@@ -78,61 +72,14 @@ async function processAiAnalysis(feedbackId: number, videoUrl: string) {
 
         console.log("Using video analysis for Gemini model");
 
-        // Get the video file from object storage
-        const filename = decodeURIComponent(videoUrl.replace('/api/video/', ''));
-        const videoData = await objectStorage.downloadAsBytes(filename);
+        // Video analysis is disabled in Cloud Run environment
+        throw new Error("Video analysis is not available in this environment");
 
-        let videoBuffer: Buffer;
+        // Video processing is disabled in Cloud Run environment
+        throw new Error("Video processing is not available in this environment");
 
-        // Handle the object storage response structure
-        if (videoData && typeof videoData === 'object' && 'ok' in videoData && 'value' in videoData) {
-          const response = videoData as { ok: boolean; value: Buffer[] };
-          if (response.ok && Array.isArray(response.value) && response.value.length > 0) {
-            videoBuffer = response.value[0];
-          } else {
-            throw new Error("Invalid object storage response");
-          }
-        } else if (Buffer.isBuffer(videoData)) {
-          videoBuffer = videoData;
-        } else if (videoData instanceof Uint8Array) {
-          videoBuffer = Buffer.from(videoData);
-        } else {
-          throw new Error("Unexpected video data format");
-        }
-
-        // Create video processor
-        const videoProcessor = new (await import("./video-processor")).VideoProcessor(defaultModel.apiKey);
-
-        // Analyze the video with frames
-        const analysisResult = await videoProcessor.analyzeVideo(
-          videoBuffer,
-          defaultModel.systemPrompt,
-          2, // Extract frame every 2 seconds
-          15 // Maximum 15 frames
-        );
-
-        // Extract rating from content
-        const ratingMatch = analysisResult.content.match(/(?:rating|score):\s*(\d+)(?:\/5)?/i) ||
-          analysisResult.content.match(/(\d+)\/5/) ||
-          analysisResult.content.match(/(\d+)\s*out\s*of\s*5/i) ||
-          analysisResult.content.match(/rate(?:d|s)?\s*(?:this|the)?\s*(?:performance|submission)?\s*(?:at|as)?\s*(\d+)/i);
-
-        const extractedRating = ratingMatch ? parseInt(ratingMatch[1]) : 3;
-        const finalRating = Math.max(1, Math.min(5, extractedRating));
-
-        // Update with video analysis results
-        await prisma.feedback.update({
-          where: { id: feedbackId },
-          data: {
-            content: `[Video Analysis - Gemini Vision]\n\n${analysisResult.content}`,
-            rating: finalRating,
-            aiAnalysisStatus: "completed",
-            aiConfidenceScore: analysisResult.confidenceScore,
-          },
-        });
-
-        console.log(`Video analysis completed for feedback ${feedbackId} using Gemini Vision (rating: ${finalRating}, confidence: ${analysisResult.confidenceScore}%)`);
-        return;
+        // Video analysis is disabled in Cloud Run environment
+        throw new Error("Video analysis is not available in this environment");
       }
 
       // Fallback to text-based analysis for non-Gemini models or if video processing fails
@@ -893,33 +840,11 @@ ${tool.pythonCode}
 
       console.log("Uploading to object storage:", filename);
 
-      // Upload to object storage with error handling
-      try {
-        const uploadResult = await objectStorage.uploadFromBytes(filename, fileBuffer);
-        console.log("Upload result:", JSON.stringify(uploadResult, null, 2));
-
-        if (!uploadResult.ok) {
-          console.error("Upload failed with error:", uploadResult.error);
-          throw new Error(`Upload failed: ${uploadResult.error?.message || 'Unknown error'}`);
-        }
-
-        const videoUrl = `/api/video/${encodeURIComponent(filename)}`;
-        console.log("Upload successful:", videoUrl);
-        res.json({ videoUrl });
-      } catch (uploadError) {
-        console.error("Object storage upload failed:", uploadError);
-
-        if (uploadError.message.includes('Error code undefined')) {
-          return res.status(503).json({
-            message: "Object storage service is currently unavailable. Please try again later.",
-            error: "Service temporarily unavailable",
-            retry: true
-          });
-        }
-
-        console.error("Upload error details:", uploadError);
-        throw uploadError;
-      }
+      // File upload is disabled in Cloud Run environment
+      return res.status(503).json({
+        message: "File upload service is currently unavailable. Please try again later.",
+        error: "Object storage not available"
+      });
     } catch (error) {
       console.error("Error uploading video:", error);
       res.status(500).json({
@@ -944,6 +869,12 @@ ${tool.pythonCode}
 
       // First check if the file exists by listing files
       try {
+        if (!objectStorage) {
+          return res.status(503).json({
+            message: "Video service is currently unavailable.",
+            error: "Object storage not available"
+          });
+        }
         console.log("Attempting to list object storage contents...");
         const listResult = await objectStorage.list();
         console.log("Object storage list result:", JSON.stringify(listResult, null, 2));
