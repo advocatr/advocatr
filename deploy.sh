@@ -1,28 +1,43 @@
-
 #!/bin/bash
 
-# Google Cloud Run Deployment Script
-# Make sure you have gcloud CLI installed and authenticated
+# Deploy to Google Cloud Run
+# This script builds and deploys the application to Google Cloud Run
 
-PROJECT_ID="your-project-id"
-SERVICE_NAME="advocatr-app"
-REGION="us-central1"
+set -e
 
-echo "Building and deploying to Google Cloud Run..."
+# Configuration
+PROJECT_ID=$(gcloud config get-value project)
+SERVICE_NAME="advocatr"
+REGION="europe-west2"
+IMAGE_NAME="gcr.io/$PROJECT_ID/$SERVICE_NAME"
 
-# Build and deploy using gcloud
+echo "🚀 Deploying $SERVICE_NAME to Google Cloud Run..."
+echo "📋 Project ID: $PROJECT_ID"
+echo "🌍 Region: $REGION"
+echo "🐳 Image: $IMAGE_NAME"
+
+# Build the Docker image
+echo "🔨 Building Docker image..."
+docker build -t $IMAGE_NAME .
+
+# Push the image to Google Container Registry
+echo "📤 Pushing image to Container Registry..."
+docker push $IMAGE_NAME
+
+# Deploy to Cloud Run
+echo "🚀 Deploying to Cloud Run..."
 gcloud run deploy $SERVICE_NAME \
-  --source . \
-  --project $PROJECT_ID \
+  --image $IMAGE_NAME \
   --region $REGION \
   --platform managed \
   --allow-unauthenticated \
   --port 8080 \
-  --memory 1Gi \
-  --cpu 1 \
+  --memory 2Gi \
+  --cpu 2 \
   --max-instances 10 \
+  --timeout 300 \
+  --concurrency 80 \
   --set-env-vars NODE_ENV=production
 
-echo "Deployment complete!"
-echo "Your service URL:"
-gcloud run services describe $SERVICE_NAME --region $REGION --format 'value(status.url)'
+echo "✅ Deployment complete!"
+echo "🌐 Service URL: $(gcloud run services describe $SERVICE_NAME --region=$REGION --format='value(status.url)')"

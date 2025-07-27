@@ -2,11 +2,11 @@
 steps:
   # Build the container image
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', 'gcr.io/$PROJECT_ID/advocatr-app:$COMMIT_SHA', '.']
+    args: ['build', '-t', 'gcr.io/$PROJECT_ID/advocatr', '.']
   
   # Push the container image to Container Registry
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['push', 'gcr.io/$PROJECT_ID/advocatr-app:$COMMIT_SHA']
+    args: ['push', 'gcr.io/$PROJECT_ID/advocatr']
   
   # Deploy container image to Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
@@ -14,22 +14,29 @@ steps:
     args:
       - 'run'
       - 'deploy'
-      - 'advocatr-app'
+      - 'advocatr'
       - '--image'
-      - 'gcr.io/$PROJECT_ID/advocatr-app:$COMMIT_SHA'
+      - 'gcr.io/$PROJECT_ID/advocatr'
       - '--region'
-      - 'us-central1'
+      - 'europe-west2'
       - '--platform'
       - 'managed'
       - '--allow-unauthenticated'
       - '--port'
       - '8080'
       - '--memory'
-      - '1Gi'
+      - '2Gi'
       - '--cpu'
-      - '1'
+      - '2'
       - '--max-instances'
       - '10'
+      - '--timeout'
+      - '300'
+      - '--concurrency'
+      - '80'
 
 images:
-  - gcr.io/$PROJECT_ID/advocatr-app:$COMMIT_SHA
+  - 'gcr.io/$PROJECT_ID/advocatr'
+
+options:
+  logging: CLOUD_LOGGING_ONLY

@@ -306,6 +306,14 @@ function isAdmin(req: Express.Request, res: Express.Response, next: Express.Next
 }
 
 export function registerRoutes(app: Express): Server {
+  // Health check endpoint for Cloud Run
+  app.get('/health', (req, res) => {
+    res.status(200).json({ 
+      status: 'healthy', 
+      timestamp: new Date().toISOString(),
+      environment: process.env.NODE_ENV || 'development'
+    });
+  });
   setupAuth(app);
 
   // Exercises endpoints
