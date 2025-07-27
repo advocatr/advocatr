@@ -1,8 +1,8 @@
 
 import { execSync } from 'child_process';
 import dotenv from 'dotenv';
-import { drizzle } from 'drizzle-orm/neon-serverless';
-import ws from 'ws';
+import { drizzle } from 'drizzle-orm/postgres-js';
+import postgres from 'postgres';
 
 // Load environment variables
 dotenv.config();
@@ -26,11 +26,8 @@ async function setupDatabase() {
     const schema = await import('./db/schema.js');
     
     // Create database connection
-    const db = drizzle({
-      connection: process.env.DATABASE_URL,
-      schema,
-      ws
-    });
+    const client = postgres(process.env.DATABASE_URL);
+    const db = drizzle(client, { schema });
 
     // Check if exercises exist
     const existingExercises = await db.query.exercises.findMany();

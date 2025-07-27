@@ -1,3 +1,4 @@
+console.log("ENV VARS:", process.env);
 import express, { type Request, Response, NextFunction } from "express";
 import fileUpload from "express-fileupload";
 import { registerRoutes } from "./routes";
