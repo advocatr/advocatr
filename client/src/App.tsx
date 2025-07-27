@@ -21,6 +21,7 @@ import FeedbackPage from "@/pages/feedback";
 import ContactUsPage from "@/pages/contact-us";
 import ToolsPage from "@/pages/tools";
 import TermsAndConditionsPage from "@/pages/terms-and-conditions";
+import PrivacyPolicyPage from "@/pages/privacy-policy";
 import AdminToolsPage from "./pages/admin/tools";
 import AIConfigPage from "./pages/admin/ai-config";
 
@@ -61,6 +62,7 @@ function Router() {
       <Route path="/feedback" component={FeedbackPage} />
       <Route path="/contact-us" component={ContactUsPage} />
       <Route path="/terms-and-conditions" component={TermsAndConditionsPage} />
+      <Route path="/privacy-policy" component={PrivacyPolicyPage} />
       <Route path="/tools" component={ToolsPage} />
       <Route path="/admin/exercises">
         {() => <AdminRoute component={AdminExercises} />}

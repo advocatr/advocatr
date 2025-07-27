@@ -1,12 +1,9 @@
-import Header from "@/components/Header";
-import Footer from "@/components/Footer";
+import { Layout } from "@/components/layout";
 
 export default function PrivacyPolicy() {
   return (
-    <div className="min-h-screen flex flex-col bg-white">
-      <Header />
-
-      <main className="flex-grow px-4 sm:px-6 lg:px-8 py-12">
+    <Layout>
+      <div className="container mx-auto px-4 py-8">
         <div className="max-w-4xl mx-auto">
           <div className="mb-8">
             <h1 className="text-3xl font-bold text-neutral-dark mb-4">
@@ -370,9 +367,7 @@ export default function PrivacyPolicy() {
             </section>
           </div>
         </div>
-      </main>
-
-      <Footer />
-    </div>
+      </div>
+    </Layout>
   );
 }

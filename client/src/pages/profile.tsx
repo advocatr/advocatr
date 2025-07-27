@@ -19,20 +19,65 @@ interface Progress {
 }
 
 export default function Profile() {
-  const { user } = useUser();
+  const { user, isLoading: userLoading } = useUser();
   const [, setLocation] = useLocation();
 
-  const { data: exercises } = useQuery<Exercise[]>({
+  const { data: exercises, isLoading: exercisesLoading, error: exercisesError } = useQuery<Exercise[]>({
     queryKey: ["/api/exercises"],
     enabled: !!user,
   });
 
-  const { data: progress } = useQuery<Progress[]>({
+  const { data: progress, isLoading: progressLoading, error: progressError } = useQuery<Progress[]>({
     queryKey: ["/api/progress"],
     enabled: !!user,
   });
 
-  if (!user || !exercises || !progress) return null;
+  // Show loading state while any data is loading
+  if (userLoading || exercisesLoading || progressLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading profile...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show error state if any API call failed
+  if (exercisesError || progressError) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-red-600 mb-4">Error loading profile data</p>
+          <Button onClick={() => window.location.reload()}>Retry</Button>
+        </div>
+      </div>
+    );
+  }
+
+  // Show message if user is not authenticated
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-gray-600 mb-4">Please log in to view your profile</p>
+          <Button onClick={() => setLocation("/login")}>Go to Login</Button>
+        </div>
+      </div>
+    );
+  }
+
+  // Show message if data is not available
+  if (!exercises || !progress) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-gray-600">No data available</p>
+        </div>
+      </div>
+    );
+  }
 
   const completedExercises = progress.filter((p) => p.completed);
   const completionPercentage = Math.round(

@@ -35,6 +35,7 @@ model Exercise {
   id                    Int            @id @default(autoincrement())
   title                 String
   description           String
+  exerciseType          String         @default("video") @map("exercise_type")
   demoVideoUrl          String         @map("demo_video_url")
   professionalAnswerUrl String         @map("professional_answer_url")
   order                 Int

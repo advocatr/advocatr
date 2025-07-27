@@ -419,7 +419,7 @@ export function registerRoutes(app: Express): Server {
 
   // Admin Routes
   app.post("/api/admin/exercises", isAdmin, async (req, res) => {
-    const { title, description, demoVideoUrl, professionalAnswerUrl, order, pdfUrl } = req.body;
+    const { title, description, demoVideoUrl, professionalAnswerUrl, order, pdfUrl, exerciseType } = req.body;
 
     const exercise = await prisma.exercise.create({
       data: {
@@ -429,6 +429,7 @@ export function registerRoutes(app: Express): Server {
         professionalAnswerUrl,
         pdfUrl,
         order,
+        exerciseType: exerciseType || "video", // Default to "video" if not provided
       }
     });
 
@@ -438,7 +439,7 @@ export function registerRoutes(app: Express): Server {
   // Update an exercise
   app.put("/api/admin/exercises/:id", isAdmin, async (req, res) => {
     const exerciseId = parseInt(req.params.id);
-    const { title, description, demoVideoUrl, professionalAnswerUrl, order, pdfUrl } = req.body;
+    const { title, description, demoVideoUrl, professionalAnswerUrl, order, pdfUrl, exerciseType } = req.body;
 
     const updated = await prisma.exercise.update({
       where: { id: exerciseId },
@@ -449,6 +450,7 @@ export function registerRoutes(app: Express): Server {
         professionalAnswerUrl,
         pdfUrl,
         order,
+        exerciseType: exerciseType || "video", // Default to "video" if not provided
         updatedAt: new Date()
       }
     });
