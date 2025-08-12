@@ -49,7 +49,7 @@ export default function AboutPage() {
                   </div>
                   <div className="md:w-2/3 space-y-4">
                     <p className="text-lg text-justify">
-                      Saara Idelbi is ranked by the Legal 500 as a 'Leading Junior' barrister in multiple areas. She is a tenant at 5 Essex Chambers and is a member of Gray's Inn, where she is also an advocacy trainer. She has built a reputation for navigating complex legal challenges with precision and clarity. Saara co-authored the{" "}
+                      Saara Idelbi is ranked by the Legal 500 as a 'Leading Junior' barrister in multiple areas. She is a tenant at 39 Essex Chambers and is a member of Gray's Inn, where she is also an advocacy trainer. She has built a reputation for navigating complex legal challenges with precision and clarity. Saara co-authored the{" "}
                       <a 
                         href="https://www.lawbriefpublishing.com/product/damagesinhumanrightsclaims/" 
                         className="text-primary hover:text-primary/80 underline underline-offset-4"
