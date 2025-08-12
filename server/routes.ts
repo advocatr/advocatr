@@ -295,6 +295,41 @@ export function registerRoutes(app: Express): Server {
   });
 
   // Progress endpoints
+  app.get("/api/progress", async (req, res) => {
+    try {
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+
+      const userId = req.user.id;
+      const progress = await prisma.userProgress.findMany({
+        where: { userId },
+        include: {
+          exercise: {
+            select: {
+              id: true,
+              title: true,
+              order: true
+            }
+          },
+          feedback: {
+            orderBy: { createdAt: 'desc' }
+          }
+        },
+        orderBy: {
+          exercise: {
+            order: 'asc'
+          }
+        }
+      });
+
+      res.json(progress);
+    } catch (error) {
+      console.error("Error fetching user progress:", error);
+      res.status(500).json({ message: "Failed to fetch user progress" });
+    }
+  });
+
   app.get("/api/progress/:exerciseId", async (req, res) => {
     try {
       const exerciseId = parseInt(req.params.exerciseId);

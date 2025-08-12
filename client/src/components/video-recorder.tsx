@@ -1,25 +1,26 @@
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
+import { AspectRatio } from "@/components/ui/aspect-ratio";
 import { Circle, Square } from "lucide-react";
 
 interface VideoRecorderProps {
-  onRecordingComplete?: (blob: Blob, videoUrl?: string) => void;
+  onRecordingComplete: (blob: Blob, videoUrl?: string) => void;
 }
 
 export default function VideoRecorder({
   onRecordingComplete,
 }: VideoRecorderProps) {
-  const previewVideoRef = useRef<HTMLVideoElement>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const recordedChunksRef = useRef<Blob[]>([]);
-
   const [isRecording, setIsRecording] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
   const [recordingStatus, setRecordingStatus] = useState<
     "inactive" | "recording" | "paused"
   >("inactive");
+
+  const previewVideoRef = useRef<HTMLVideoElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const recordedChunksRef = useRef<Blob[]>([]);
 
   useEffect(() => {
     initializeMediaStream();
@@ -141,13 +142,13 @@ export default function VideoRecorder({
         typeof MediaRecorder !== "undefined" ? "available" : "NOT available",
       );
       if (!MediaRecorder || !MediaRecorder.isTypeSupported) {
-        throw new Error("MediaRecorder is not supported");
+        throw new Error("MediaRecorder not supported by this browser");
       }
 
       // Clear previous recording data
       recordedChunksRef.current = [];
 
-      // Simplified MIME type logic for Firefox
+      // Determine supported MIME type
       let mimeType = "";
       if (MediaRecorder.isTypeSupported("video/webm")) {
         mimeType = "video/webm";
@@ -277,8 +278,20 @@ export default function VideoRecorder({
         throw new Error("Recording produced empty file");
       }
 
-      // Upload the recording
-      await uploadRecording(blob);
+      // Create a temporary URL for the blob
+      const videoUrl = URL.createObjectURL(blob);
+      console.log("Created video URL:", videoUrl);
+
+      // Call the completion handler
+      onRecordingComplete(blob, videoUrl);
+
+      // Clean up the temporary URL after a delay
+      setTimeout(() => {
+        URL.revokeObjectURL(videoUrl);
+      }, 1000);
+
+      // Reset for next recording
+      recordedChunksRef.current = [];
     } catch (error) {
       console.error("Failed to process recording:", error);
       setError(
@@ -287,49 +300,20 @@ export default function VideoRecorder({
     }
   };
 
-  const uploadRecording = async (blob: Blob) => {
-    try {
-      console.log("Uploading recording:", blob.size, "bytes");
-
-      const formData = new FormData();
-      formData.append("video", blob, "recording.webm");
-
-      const response = await fetch("/api/upload-video", {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Upload failed: ${response.status} ${errorText}`);
-      }
-
-      const { videoUrl } = await response.json();
-      console.log("Upload successful:", videoUrl);
-
-      onRecordingComplete?.(blob, videoUrl);
-    } catch (error) {
-      console.error("Upload failed:", error);
-      setError(
-        `Upload failed: ${error instanceof Error ? error.message : "Unknown error"}`,
-      );
-
-      onRecordingComplete?.(blob);
-    }
-  };
-
   return (
     <div className="space-y-4">
       <div className="relative bg-black rounded-lg overflow-hidden">
-        <video
-          ref={previewVideoRef}
-          autoPlay
-          muted
-          playsInline
-          controls={false}
-          className="w-full h-64 object-cover"
-          style={{ transform: "scaleX(-1)" }}
-        />
+        <AspectRatio ratio={16 / 9}>
+          <video
+            ref={previewVideoRef}
+            autoPlay
+            muted
+            playsInline
+            controls={false}
+            className="w-full h-full object-cover"
+            style={{ transform: "scaleX(-1)" }}
+          />
+        </AspectRatio>
 
         {isRecording && (
           <div className="absolute top-4 left-4 flex items-center space-x-2 bg-red-600 text-white px-3 py-1 rounded-full">

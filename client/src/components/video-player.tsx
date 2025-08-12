@@ -1,6 +1,7 @@
 
 import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
+import { AspectRatio } from "@/components/ui/aspect-ratio";
 import { Play, Pause, RotateCcw } from "lucide-react";
 
 interface VideoPlayerProps {
@@ -45,8 +46,10 @@ export default function VideoPlayer({ url, onRerecord }: VideoPlayerProps) {
 
   if (!url) {
     return (
-      <div className="w-full h-64 bg-gray-100 rounded-lg flex items-center justify-center">
-        <p className="text-gray-500">No video available</p>
+      <div className="w-full">
+        <AspectRatio ratio={16 / 9} className="bg-gray-100 rounded-lg flex items-center justify-center">
+          <p className="text-gray-500">No video available</p>
+        </AspectRatio>
       </div>
     );
   }
@@ -54,17 +57,19 @@ export default function VideoPlayer({ url, onRerecord }: VideoPlayerProps) {
   return (
     <div className="space-y-4">
       <div className="relative bg-black rounded-lg overflow-hidden">
-        <video
-          ref={videoRef}
-          className="w-full h-64 object-cover"
-          controls
-          src={url}
-          playsInline
-          onLoadedData={handleVideoLoad}
-          onError={handleVideoError}
-          onPlay={handlePlay}
-          onPause={handlePause}
-        />
+        <AspectRatio ratio={16 / 9}>
+          <video
+            ref={videoRef}
+            className="w-full h-full object-cover"
+            controls
+            src={url}
+            playsInline
+            onLoadedData={handleVideoLoad}
+            onError={handleVideoError}
+            onPlay={handlePlay}
+            onPause={handlePause}
+          />
+        </AspectRatio>
         
         {isLoading && (
           <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50">

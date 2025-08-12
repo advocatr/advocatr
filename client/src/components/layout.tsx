@@ -22,9 +22,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <footer className="border-t mt-auto">
         <div className="container mx-auto px-4 py-6 text-center text-gray-500">
           <p>© {new Date().getFullYear()} Advocatr. All rights reserved.</p>
-          <div className="mt-2">
-            <a href="/terms" className="text-sm hover:text-gray-700 transition-colors inline-block">
-              Terms & Privacy
+          <div className="mt-2 flex justify-center gap-6">
+            <a href="/terms-and-conditions" className="text-sm hover:text-gray-700 transition-colors">
+              Terms & Conditions
+            </a>
+            <a href="/privacy-policy" className="text-sm hover:text-gray-700 transition-colors">
+              Privacy Policy
             </a>
           </div>
         </div>

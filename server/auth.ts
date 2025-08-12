@@ -11,14 +11,21 @@ import { z } from "zod";
 const insertUserSchema = z.object({
   username: z.string().min(3).max(50),
   password: z.string().min(6),
+  email: z.string().email(),
+});
+
+const loginSchema = z.object({
+  username: z.string().min(3).max(50),
+  password: z.string().min(6),
 });
 
 type UserType = {
   id: number;
   username: string;
   password: string;
-  createdAt: Date;
-  updatedAt: Date;
+  email: string;
+  isAdmin: boolean | null;
+  createdAt: Date | null;
 };
 
 const scryptAsync = promisify(scrypt);
@@ -53,10 +60,13 @@ declare global {
 export function setupAuth(app: Express) {
   const MemoryStore = createMemoryStore(session);
   const sessionSettings: session.SessionOptions = {
-    secret: process.env.REPL_ID || "porygon-supremacy",
+    secret: process.env.SESSION_SECRET || process.env.REPL_ID || "porygon-supremacy",
     resave: false,
     saveUninitialized: false,
-    cookie: {},
+    cookie: {
+      httpOnly: true,
+      maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    },
     store: new MemoryStore({
       checkPeriod: 86400000, // prune expired entries every 24h
     }),
@@ -65,7 +75,9 @@ export function setupAuth(app: Express) {
   if (app.get("env") === "production") {
     app.set("trust proxy", 1);
     sessionSettings.cookie = {
+      ...sessionSettings.cookie,
       secure: true,
+      sameSite: 'lax',
     };
   }
 
@@ -118,7 +130,7 @@ export function setupAuth(app: Express) {
           .send("Invalid input: " + result.error.issues.map(i => i.message).join(", "));
       }
 
-      const { username, password } = result.data;
+      const { username, password, email } = result.data;
 
       // Check if user already exists
       const existingUser = await prisma.user.findUnique({
@@ -129,6 +141,15 @@ export function setupAuth(app: Express) {
         return res.status(400).send("Username already exists");
       }
 
+      // Check if email already exists
+      const existingEmail = await prisma.user.findUnique({
+        where: { email }
+      });
+
+      if (existingEmail) {
+        return res.status(400).send("Email already exists");
+      }
+
       // Hash the password
       const hashedPassword = await crypto.hash(password);
 
@@ -137,6 +158,7 @@ export function setupAuth(app: Express) {
         data: {
           username,
           password: hashedPassword,
+          email,
         }
       });
 
@@ -147,7 +169,7 @@ export function setupAuth(app: Express) {
         }
         return res.json({
           message: "Registration successful",
-          user: { id: newUser.id, username: newUser.username },
+          user: { id: newUser.id, username: newUser.username, email: newUser.email },
         });
       });
     } catch (error) {
@@ -156,7 +178,7 @@ export function setupAuth(app: Express) {
   });
 
   app.post("/api/login", (req, res, next) => {
-    const result = insertUserSchema.safeParse(req.body);
+    const result = loginSchema.safeParse(req.body);
     if (!result.success) {
       return res
         .status(400)
