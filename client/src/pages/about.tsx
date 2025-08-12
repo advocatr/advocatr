@@ -68,7 +68,7 @@ export default function AboutPage() {
                       </a>
                       {" "}or find her on social media{" "}
                       <a 
-                        href="https://bsky.app/profile/saaraly.bsky.social." 
+                        href="https://uk.linkedin.com/in/saara-idelbi." 
                         className="text-primary hover:text-primary/80 underline underline-offset-4"
                       >
                         here
