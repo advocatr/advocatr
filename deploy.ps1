@@ -38,13 +38,8 @@ gcloud run deploy $SERVICE_NAME `
   --concurrency 80 `
   --update-env-vars NODE_ENV=production
 
-# Restore critical environment variables to prevent login issues
-Write-Host "Restoring critical environment variables..." -ForegroundColor Yellow
-gcloud run services update $SERVICE_NAME `
-  --region $REGION `
-  --set-env-vars "NODE_ENV=production,DATABASE_URL=postgresql://advocatr-cloudrun:Advocatr2024@35.230.134.172:5432/advocatr,SESSION_SECRET=a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef12345678"
-
 Write-Host "Deployment complete!" -ForegroundColor Green
 $SERVICE_URL = gcloud run services describe $SERVICE_NAME --region=$REGION --format='value(status.url)'
 Write-Host "Service URL: $SERVICE_URL" -ForegroundColor Green
-Write-Host "Environment variables restored - login should continue working!" -ForegroundColor Green 
+Write-Host "IMPORTANT: Ensure DATABASE_URL and SESSION_SECRET are set in Cloud Run environment variables!" -ForegroundColor Red
+Write-Host "You can set them manually in the Google Cloud Console or use gcloud commands with proper secret management." -ForegroundColor Yellow 

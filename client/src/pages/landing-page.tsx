@@ -32,13 +32,7 @@ export default function LandingPage() {
               develop essential advocacy skills for pupillage interview practice
               and beyond.
             </p>
-            <Button
-              size="lg"
-              onClick={() => setLocation("/auth")}
-              className="px-8 py-6 text-lg"
-            >
-              Start Your Journey <ArrowRight className="ml-2" />
-            </Button>
+
           </section>
 
           <section className="grid md:grid-cols-3 gap-8 mb-20">

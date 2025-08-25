@@ -5,3 +5,45 @@ server/public
 vite.config.ts.*
 *.tar.gz
 /generated/prisma
+
+# Security - Prevent accidental exposure of secrets
+.env
+.env.local
+.env.production
+.env.development
+*.env
+secrets.json
+config.json
+credentials.json
+service-account-key.json
+
+# Deployment scripts that might contain secrets
+deploy-*.ps1
+deploy-*.sh
+deploy-*.bat
+
+# Database and connection files
+database-*.sql
+connection-*.json
+*.pem
+*.key
+*.crt
+
+# Logs that might contain sensitive information
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
