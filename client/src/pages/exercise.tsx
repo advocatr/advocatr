@@ -22,6 +22,7 @@ interface Exercise {
   description: string;
   demoVideoUrl: string;
   professionalAnswerUrl: string;
+  videoRecordingTimeLimit?: number;
 }
 
 interface Progress {
@@ -247,6 +248,7 @@ export default function Exercise() {
               />
             ) : (
               <VideoRecorder 
+                maxDurationSeconds={exercise?.videoRecordingTimeLimit || 300}
                 onRecordingComplete={(blob, videoUrl) => {
                   if (videoUrl) {
                     // Update progress with the server video URL

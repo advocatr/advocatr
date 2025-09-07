@@ -5,10 +5,12 @@ import { Circle, Square } from "lucide-react";
 
 interface VideoRecorderProps {
   onRecordingComplete: (blob: Blob, videoUrl?: string) => void;
+  maxDurationSeconds?: number; // Maximum recording duration in seconds
 }
 
 export default function VideoRecorder({
   onRecordingComplete,
+  maxDurationSeconds = 300, // Default 5 minutes
 }: VideoRecorderProps) {
   const [isRecording, setIsRecording] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -16,11 +18,14 @@ export default function VideoRecorder({
   const [recordingStatus, setRecordingStatus] = useState<
     "inactive" | "recording" | "paused"
   >("inactive");
+  const [recordingTime, setRecordingTime] = useState(0);
+  const [timeLimitReached, setTimeLimitReached] = useState(false);
 
   const previewVideoRef = useRef<HTMLVideoElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const recordedChunksRef = useRef<Blob[]>([]);
+  const timerRef = useRef<number | null>(null);
 
   useEffect(() => {
     initializeMediaStream();
@@ -41,6 +46,16 @@ export default function VideoRecorder({
     }
     mediaRecorderRef.current = null;
     recordedChunksRef.current = [];
+    
+    // Clear timer
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    
+    // Reset timer state
+    setRecordingTime(0);
+    setTimeLimitReached(false);
   };
 
   const initializeMediaStream = async () => {
@@ -193,6 +208,26 @@ export default function VideoRecorder({
         console.log("[onstart] Recording started");
         setRecordingStatus("recording");
         setIsRecording(true);
+        setRecordingTime(0);
+        setTimeLimitReached(false);
+        
+        // Start timer
+        timerRef.current = setInterval(() => {
+          setRecordingTime((prevTime) => {
+            const newTime = prevTime + 1;
+            
+            // Check if time limit reached
+            if (newTime >= maxDurationSeconds) {
+              setTimeLimitReached(true);
+              // Auto-stop recording when time limit is reached
+              setTimeout(() => {
+                stopRecording();
+              }, 100);
+            }
+            
+            return newTime;
+          });
+        }, 1000);
       };
 
       mediaRecorder.onstop = () => {
@@ -202,6 +237,13 @@ export default function VideoRecorder({
         );
         setRecordingStatus("inactive");
         setIsRecording(false);
+        
+        // Clear timer
+        if (timerRef.current) {
+          clearInterval(timerRef.current);
+          timerRef.current = null;
+        }
+        
         if (
           mediaRecorder.state === "inactive" &&
           recordedChunksRef.current.length === 0
@@ -218,6 +260,12 @@ export default function VideoRecorder({
         setError("Recording failed due to an error");
         setRecordingStatus("inactive");
         setIsRecording(false);
+        
+        // Clear timer on error
+        if (timerRef.current) {
+          clearInterval(timerRef.current);
+          timerRef.current = null;
+        }
       };
 
       mediaRecorderRef.current = mediaRecorder;
@@ -319,6 +367,36 @@ export default function VideoRecorder({
           <div className="absolute top-4 left-4 flex items-center space-x-2 bg-red-600 text-white px-3 py-1 rounded-full">
             <Circle className="h-3 w-3 animate-pulse" fill="currentColor" />
             <span className="text-sm font-medium">Recording</span>
+          </div>
+        )}
+        
+        {isRecording && (
+          <div className="absolute top-4 right-4 bg-black bg-opacity-70 text-white px-3 py-1 rounded-full">
+            <span className="text-sm font-mono">
+              {Math.floor(recordingTime / 60)}:{(recordingTime % 60).toString().padStart(2, '0')}
+              {timeLimitReached && (
+                <span className="text-red-400 ml-2">(Time limit reached)</span>
+              )}
+            </span>
+          </div>
+        )}
+        
+        {isRecording && (
+          <div className="absolute bottom-4 left-4 right-4">
+            <div className="bg-black bg-opacity-50 rounded-full h-2">
+              <div 
+                className={`h-2 rounded-full transition-all duration-1000 ${
+                  recordingTime / maxDurationSeconds > 0.8 
+                    ? 'bg-red-500' 
+                    : recordingTime / maxDurationSeconds > 0.6 
+                    ? 'bg-yellow-500' 
+                    : 'bg-green-500'
+                }`}
+                style={{ 
+                  width: `${Math.min((recordingTime / maxDurationSeconds) * 100, 100)}%` 
+                }}
+              />
+            </div>
           </div>
         )}
       </div>

@@ -41,6 +41,7 @@ model Exercise {
   order                 Int
   pdfUrl                String?        @map("pdf_url")
   switchTimes           String         @default("[]") @map("switch_times")
+  videoRecordingTimeLimit Int          @default(300) @map("video_recording_time_limit")
   progress              UserProgress[]
 
   @@map("exercises")

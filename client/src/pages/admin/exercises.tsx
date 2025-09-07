@@ -25,6 +25,7 @@ const exerciseSchema = z.object({
   professionalAnswerUrl: z.string().url("Must be a valid URL"),
   pdfUrl: z.string().url("Must be a valid URL").optional(),
   order: z.number().min(1, "Order must be at least 1"),
+  videoRecordingTimeLimit: z.number().min(30, "Minimum 30 seconds").max(1800, "Maximum 30 minutes"),
   switchPoints: z.array(z.object({
     timeInSeconds: z.number().min(0, "Time must be non-negative"),
     nextVideoUrl: z.string().url("Must be a valid URL"),
@@ -59,6 +60,7 @@ export default function AdminExercises() {
       professionalAnswerUrl: "",
       pdfUrl: "",
       order: 1,
+      videoRecordingTimeLimit: 300, // Default 5 minutes
       switchPoints: [],
     },
   });
@@ -73,6 +75,7 @@ export default function AdminExercises() {
         professionalAnswerUrl: currentExercise.professionalAnswerUrl,
         pdfUrl: currentExercise.pdfUrl || "",
         order: currentExercise.order,
+        videoRecordingTimeLimit: currentExercise.videoRecordingTimeLimit || 300,
         switchPoints: currentExercise.switchPoints || [],
       });
     } else if (!isEditing) {
@@ -82,6 +85,7 @@ export default function AdminExercises() {
         demoVideoUrl: "",
         professionalAnswerUrl: "",
         order: 1,
+        videoRecordingTimeLimit: 300,
         switchPoints: [],
       });
     }
@@ -280,6 +284,30 @@ export default function AdminExercises() {
                         />
                       </FormControl>
                       <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="videoRecordingTimeLimit"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Video Recording Time Limit (seconds)</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          type="number"
+                          min="30"
+                          max="1800"
+                          onChange={(e) =>
+                            field.onChange(parseInt(e.target.value))
+                          }
+                        />
+                      </FormControl>
+                      <FormMessage />
+                      <p className="text-sm text-gray-500">
+                        Maximum recording duration (30 seconds to 30 minutes)
+                      </p>
                     </FormItem>
                   )}
                 />
