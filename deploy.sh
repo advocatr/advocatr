@@ -40,4 +40,27 @@ gcloud run deploy $SERVICE_NAME \
   --set-env-vars NODE_ENV=production
 
 echo "✅ Deployment complete!"
+
+# Run database migration
+echo "🔄 Running database migration..."
+gcloud run jobs create migrate-db \
+  --image $IMAGE_NAME \
+  --region $REGION \
+  --memory 1Gi \
+  --cpu 1 \
+  --max-retries 3 \
+  --parallelism 1 \
+  --task-count 1 \
+  --set-env-vars NODE_ENV=production \
+  --command node \
+  --args migrate-db.js \
+  || echo "⚠️  Migration job creation failed, but deployment succeeded"
+
+# Execute the migration job
+echo "🚀 Executing migration job..."
+gcloud run jobs execute migrate-db \
+  --region $REGION \
+  --wait \
+  || echo "⚠️  Migration execution failed, but deployment succeeded"
+
 echo "🌐 Service URL: $(gcloud run services describe $SERVICE_NAME --region=$REGION --format='value(status.url)')"
